@@ -23,6 +23,7 @@ Alat otomatis: `php tools/verify.php` (menjalankan gerbang 1–5 sekaligus).
 | 13 | Typo CHANGELOG ("SELESAU") | Internal (self-review) | — | G |
 | 14 | `max_tokens` vs `max_completion_tokens` lintas-provider AI Puffer | Internal (cek source) | sejak v1.0.0 | A (dicegah) |
 | 15 | Opsi Rank Math tanda hubung vs postmeta underscore | Internal (cek source) | sejak v1.2.0 | A (dicegah) |
+| 16 | verify.php G7: `dirname('...tools/..')` = `.../tools` → zip dibangun di lokasi salah, gerbang PASS padahal zip distribusi tetap v1.9.1; aset rilis terunggah dari zip basi | **User (Mas Wondho)** "zip belum diupdate" | v2.0.0 (asset diganti) | E |
 
 ## 2. Analisis Akar-Masalah per Kelas
 
@@ -55,7 +56,11 @@ namadomain.co.id). Gerbang 5 memindai ini otomatis.
 
 ### Kelas E — Higien artefak build/git
 **Aturan**: ZIP hanya via PHP ZipArchive (forward-slash); sebelum commit periksa
-`git status` — folder tooling/sekret tidak boleh masuk.
+`git status` — folder tooling/sekret tidak boleh masuk; **path tooling wajib
+`realpath()` sebelum `dirname()`** (jebakan `dirname('/..')` = direktori salah,
+insiden #16); **verifikasi versi SELALU dibaca dari DALAM arsip** (bukan mtime/nama);
+aset rilis GitHub diberi **nama berversi** (`dci-mcp-bridge-{VERSI}.zip`) agar
+kebal cache CDN pada penggantian aset senama (updater memakai fallback "zip pertama").
 
 ### Kelas F — Pola kesalahan penyuntingan berulang
 **Aturan**: (a) saat menyisipkan seksi via edit teks, anchor WAJIB memuat baris
@@ -89,7 +94,8 @@ semua file yang dikirim, termasuk dokumen.
 - [ ] Integrasi pihak ketiga baru: bukti `file:line` dari source di komentar (Kelas A).
 - [ ] Teks contoh/UI: placeholder netral saja (Kelas D).
 - [ ] Bump versi di 4 file sekaligus (plugin header, konstanta, readme, CHANGELOG).
-- [ ] RILIS (sejak v2.0.0): buat GitHub Release dari tag, **lampirkan aset
-      `dci-mcp-bridge.zip`** (hasil G7 verify.php) — tanpa aset ini updater tidak
-      menemukan paket, dan paket tanpa struktur folder yang benar akan terpasang
-      sebagai duplikat.
+- [ ] RILIS (sejak v2.0.0): buat GitHub Release dari tag, **lampirkan aset ZIP
+      dengan NAMA BERVERSI** `dci-mcp-bridge-{VERSI}.zip` (salin/rename hasil G7
+      verify.php) — nama berversi mencegah CDN menyajikan byte lama saat aset
+      diganti, dan tanpa aset updater tidak menemukan paket; zip tanpa struktur
+      folder yang benar akan terpasang sebagai duplikat.

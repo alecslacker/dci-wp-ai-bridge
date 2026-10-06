@@ -9,7 +9,7 @@
  * setara php -l), gerbang lain murni pembacaan file statis.
  */
 
-$root = __DIR__ . '/..';
+$root = realpath( __DIR__ . '/..' );
 
 /* Gerbang 1+2 — Harness runtime in-process (mencakup parse/lint: require gagal = fatal) */
 define( 'DCI_HARNESS_NO_EXIT', true );
