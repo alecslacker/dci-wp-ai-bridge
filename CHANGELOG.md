@@ -6,6 +6,32 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.6.1] — 2026-10-07
+
+### Diperbaiki
+- **Kartu AI Puffer tetap salah deteksi di situs nyata** (laporan Mas Wondho, meski
+  v1.5.1 sudah memperbaiki namespace): kunci API provider tersimpan di
+  `aipkit_options['providers'][<Label>]['api_key']` — BUKAN di `['api_keys']`
+  (cabang itu hanya memuat `public_api_key`/`public_api_enabled`; bukti:
+  `classes/ai/settings.php:1017` milik plugin AI Puffer). Status kini membaca
+  cabang yang benar, memprioritaskan aksesor resmi `AIPKIT_AI_Settings::get_all_providers()`;
+  `AIPufferCloud` dianggap siap bila model-nya terisi (koneksi cloud tanpa api_key).
+- Deteksi "terpasang" diganti ke cara kanonik WordPress: `is_plugin_active()` +
+  versi dari `get_plugins()` — tidak lagi bergantung pada kelas internal yang
+  bisa berpindah namespace antar versi. Versi terpasang ditampilkan di kartu;
+  bila kelas jalur internal tak ditemukan, muncul saran memperbarui AI Puffer.
+
+### Berubah
+- Nama server MCP pada semua snippet kini **`<domain>-wordpress`**
+  (mis. `djayakontainer-wordpress`) — sufiks menyatakan sistem yang disambungkan,
+  domain di depan menjaga pengelompokan per-situs untuk agensi multi-klien.
+  Override manual: `define( 'DCI_MCP_SERVER_NAME', 'nama-lain' );`
+- Contoh username pada form koneksi memakai `johndoe` (tidak lagi menyebut user nyata).
+
+### Pengujian
+- Harness +5 uji regresi (deteksi cabang providers, versi plugin, fallback kelas,
+  penamaan server, override konstanta) — total **40/40 PASS**.
+
 ## [1.6.0] — 2026-10-07
 
 ### Ditambahkan

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.6.0
+ * Version:           1.6.1
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.6.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.6.1' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -873,35 +873,92 @@ function dci_mcp_bridge_aipkit_class( $short ) {
 }
 
 /**
- * Status mesin AI Puffer untuk ability get-seo-config: keberadaan kelas
- * internal + daftar nama provider yang API key-nya terisi (tanpa nilai).
+ * Status mesin AI Puffer (v1.6.1 — deteksi kanonik, tahan versi).
  *
- * @return array
+ * Dua akar salah deteksi versi lama, keduanya terbukti dari source:
+ *  1. "Terpasang" kini dicek cara kanonik WordPress (is_plugin_active +
+ *     versi dari get_plugins), bukan lewat kelas internal yang bisa
+ *     berpindah namespace antar versi plugin.
+ *  2. Kunci API provider tersimpan di aipkit_options['providers'][<Label>]['api_key']
+ *     (lihat classes/ai/settings.php:1017), BUKAN di ['api_keys'] yang
+ *     hanya memuat pengaturan Public API REST. Baca via aksesor resmi
+ *     get_all_providers() bila tersedia, fallback baca cabang mentah.
+ *
+ * @return array installed, version, providers_configured, public_api_enabled, internal_ready.
  */
 function dci_mcp_bridge_aip_status() {
-	$aip_installed = '' !== dci_mcp_bridge_aipkit_class( 'AIPKit_AI_Caller' );
-	$aip_providers = array();
-	$aip_public_api = false;
+	$plugin_file = 'gpt3-ai-content-generator/gpt3-ai-content-generator.php';
 
-	if ( $aip_installed ) {
-		$aip_opts = get_option( 'aipkit_options', array() );
-		$aip_keys = ( isset( $aip_opts['api_keys'] ) && is_array( $aip_opts['api_keys'] ) ) ? $aip_opts['api_keys'] : array();
+	// 1) Deteksi kanonik via WordPress.
+	$installed = false;
+	$version   = null;
 
-		foreach ( $aip_keys as $label => $config ) {
-			if ( is_array( $config ) && isset( $config['api_key'] ) && is_string( $config['api_key'] ) && '' !== trim( $config['api_key'] ) ) {
-				$aip_providers[] = (string) $label;
-			}
-		}
-
-		$aip_public_api = array_key_exists( 'public_api_enabled', $aip_keys )
-			? ( '1' === (string) $aip_keys['public_api_enabled'] )
-			: false;
+	if ( ! function_exists( 'get_plugins' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
 	}
 
+	if ( function_exists( 'is_plugin_active' ) ) {
+		$installed = is_plugin_active( $plugin_file );
+
+		if ( $installed && function_exists( 'get_plugins' ) ) {
+			$all_plugins = get_plugins();
+
+			if ( isset( $all_plugins[ $plugin_file ]['Version'] ) ) {
+				$version = (string) $all_plugins[ $plugin_file ]['Version'];
+			}
+		}
+	}
+
+	// 2) Fallback kelas internal bila fungsi admin tak tersedia (konteks jarang).
+	$internal_ready = '' !== dci_mcp_bridge_aipkit_class( 'AIPKit_AI_Caller' );
+
+	if ( ! $installed && $internal_ready ) {
+		$installed = true;
+	}
+
+	// 3) Provider terisi — aksesor resmi dulu, lalu cabang mentah 'providers'.
+	$raw_providers = null;
+
+	$settings_class = dci_mcp_bridge_aipkit_class( 'AIPKIT_AI_Settings' );
+
+	if ( $settings_class && method_exists( $settings_class, 'get_all_providers' ) ) {
+		$raw_providers = call_user_func( array( $settings_class, 'get_all_providers' ) );
+	}
+
+	if ( ! is_array( $raw_providers ) ) {
+		$aip_opts = get_option( 'aipkit_options', array() );
+		$raw_providers = ( isset( $aip_opts['providers'] ) && is_array( $aip_opts['providers'] ) ) ? $aip_opts['providers'] : array();
+	}
+
+	$providers_configured = array();
+
+	foreach ( $raw_providers as $label => $data ) {
+		if ( ! is_array( $data ) ) {
+			continue;
+		}
+
+		$key   = isset( $data['api_key'] ) ? trim( (string) $data['api_key'] ) : '';
+		$model = isset( $data['model'] ) ? trim( (string) $data['model'] ) : '';
+
+		// AIPufferCloud tidak memakai api_key — koneksi cloud dianggap siap bila model terisi.
+		if ( '' !== $key || ( 'AIPufferCloud' === $label && '' !== $model ) ) {
+			$providers_configured[] = (string) $label;
+		}
+	}
+
+	// 4) Flag Public API tetap dari cabang api_keys.
+	$aip_opts  = get_option( 'aipkit_options', array() );
+	$aip_keys  = ( isset( $aip_opts['api_keys'] ) && is_array( $aip_opts['api_keys'] ) ) ? $aip_opts['api_keys'] : array();
+	$public_api = array_key_exists( 'public_api_enabled', $aip_keys )
+		? ( '1' === (string) $aip_keys['public_api_enabled'] )
+		: false;
+
 	return array(
-		'installed'            => $aip_installed,
-		'providers_configured' => $aip_providers,
-		'public_api_enabled'   => $aip_public_api,
+		'installed'            => $installed,
+		'version'              => $version,
+		'providers_configured' => $providers_configured,
+		'public_api_enabled'   => $public_api,
+		'internal_ready'       => $internal_ready,
 	);
 }
 
@@ -2074,23 +2131,31 @@ function dci_mcp_bridge_env_status() {
 	// MCP Adapter: nama kelas inti diverifikasi dari dokumentasi resminya.
 	$mcp_active = class_exists( '\WP\MCP\Core\McpAdapter' );
 
-	// AI Puffer: deteksi via kelas internal (FQCN WPAICG\...) + provider terisi.
+	// AI Puffer: deteksi kanonik (plugin aktif + versi + provider terisi).
 	$aip = dci_mcp_bridge_aip_status();
 	$aip_state  = 'nonaktif';
 	$aip_detail = __( 'Plugin AI Puffer tidak terdeteksi — kemampuan generate teks tidak akan berfungsi.', 'dci-mcp-bridge' );
+	$aip_vers   = ( null !== $aip['version'] ) ? sprintf( 'v%s ', $aip['version'] ) : '';
 
 	if ( $aip['installed'] ) {
 		if ( ! empty( $aip['providers_configured'] ) ) {
 			$aip_state  = 'aktif';
 			$aip_detail = sprintf(
-				/* translators: 1: daftar nama provider. */
-				__( 'Mesin AI siap (panggilan internal, tanpa HTTP). Provider terisi: %1$s. Public API: %2$s.', 'dci-mcp-bridge' ),
+				/* translators: 1: versi, 2: daftar provider, 3: status jalur. */
+				__( 'AI Puffer %1$sterpasang — mesin AI siap. Provider terisi: %2$s. Jalur: %3$s.', 'dci-mcp-bridge' ),
+				$aip_vers,
 				implode( ', ', $aip['providers_configured'] ),
-				$aip['public_api_enabled'] ? __( 'aktif', 'dci-mcp-bridge' ) : __( 'opsional (belum aktif)', 'dci-mcp-bridge' )
+				$aip['internal_ready']
+					? __( 'internal langsung (tanpa HTTP)', 'dci-mcp-bridge' )
+					: __( 'versi lama — perbarui AI Puffer agar memakai jalur internal', 'dci-mcp-bridge' )
 			);
 		} else {
 			$aip_state  = 'perlu-konfigurasi';
-			$aip_detail = __( 'AI Puffer terpasang, tetapi belum ada API key provider yang diisi (AIPKit → Settings). Isi minimal satu provider agar generate teks berfungsi.', 'dci-mcp-bridge' );
+			$aip_detail = sprintf(
+				/* translators: %s: versi (boleh kosong). */
+				__( 'AI Puffer %1$sterpasang, tetapi belum ada API key provider yang terisi (AIPKit → Settings). Isi minimal satu provider agar generate teks berfungsi.', 'dci-mcp-bridge' ),
+				$aip_vers
+			);
 		}
 	}
 
@@ -2139,6 +2204,31 @@ function dci_mcp_bridge_ability_table() {
 }
 
 /**
+ * Nama server MCP untuk snippet koneksi: domain situs + penanda WordPress.
+ * Contoh: www.djayakontainer.co.id → "djayakontainer-wordpress".
+ * Nama situs di depan agar daftar klien mengelompok per situs (agensi
+ * multi-klien); sufiks -wordpress menyatakan sistem yang disambungkan.
+ * Override: konstanta DCI_MCP_SERVER_NAME di wp-config.php.
+ *
+ * @return string Nama server (hurf kecil, aman untuk semua klien MCP).
+ */
+function dci_mcp_bridge_server_name() {
+	if ( defined( 'DCI_MCP_SERVER_NAME' ) && is_string( DCI_MCP_SERVER_NAME ) && '' !== trim( DCI_MCP_SERVER_NAME ) ) {
+		return sanitize_key( trim( DCI_MCP_SERVER_NAME ) );
+	}
+
+	$site_host = preg_replace( '/^www\./i', '', (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+	$host_seg  = explode( '.', (string) $site_host );
+	$slug      = sanitize_key( ( isset( $host_seg[0] ) && '' !== $host_seg[0] ) ? $host_seg[0] : '' );
+
+	if ( '' === $slug ) {
+		$slug = 'situs';
+	}
+
+	return $slug . '-wordpress';
+}
+
+/**
  * Render halaman admin DCI Bridge.
  */
 function dci_mcp_bridge_render_admin_page() {
@@ -2161,14 +2251,11 @@ function dci_mcp_bridge_render_admin_page() {
 		$masked_list[] = '••••' . substr( $stored_key, -4 );
 	}
 
-	/* Nama MCP otomatis dari domain situs: www.djayakontainer.co.id → djayakontainer */
-	$site_host = preg_replace( '/^www\./i', '', (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
-	$host_seg  = explode( '.', (string) $site_host );
-	$mcp_slug  = sanitize_key( isset( $host_seg[0] ) ? $host_seg[0] : '' );
-
-	if ( '' === $mcp_slug ) {
-		$mcp_slug = 'wordpress';
-	}
+	/* Nama MCP: domain situs + penanda WordPress (www.djayakontainer.co.id
+	 * → djayakontainer-wordpress). Menyatakan sistem yang disambungkan tanpa
+	 * mengorbankan pengelompokan per-situs (agensi multi-klien).
+	 * Override manual: define( 'DCI_MCP_SERVER_NAME', 'nama-lain' ); */
+	$mcp_name = dci_mcp_bridge_server_name();
 
 	/* Potongan konfigurasi per klien — format dari dokumentasi resmi masing-masing.
 	 * __BASIC_AUTH__ = placeholder yang diisi JavaScript di browser
@@ -2178,52 +2265,52 @@ function dci_mcp_bridge_render_admin_page() {
 		'claude-code' => array(
 			'label' => __( 'Claude Code', 'dci-mcp-bridge' ),
 			'lokasi' => __( 'Perintah terminal (langsung), atau file .mcp.json di root proyek', 'dci-mcp-bridge' ),
-			'code' => "claude mcp add --transport http {$mcp_slug} {$endpoint_url} \\\n  --header \"Authorization: Basic {$token}\"\n\n/* .mcp.json (proyek) */\n{\n  \"mcpServers\": {\n    \"{$mcp_slug}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
+			'code' => "claude mcp add --transport http {$mcp_name} {$endpoint_url} \\\n  --header \"Authorization: Basic {$token}\"\n\n/* .mcp.json (proyek) */\n{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
 		),
 		'cursor' => array(
 			'label' => __( 'Cursor', 'dci-mcp-bridge' ),
 			'lokasi' => __( '~/.cursor/mcp.json (global) atau .cursor/mcp.json (proyek)', 'dci-mcp-bridge' ),
-			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_slug}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
+			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
 		),
 		'codex' => array(
 			'label' => __( 'Codex (OpenAI CLI)', 'dci-mcp-bridge' ),
 			'lokasi' => __( '~/.codex/config.toml — atau: codex mcp add --url <endpoint> <slug>', 'dci-mcp-bridge' ),
-			'code' => "[mcp_servers.{$mcp_slug}]\nurl = \"{$endpoint_url}\"\nhttp_headers = { \"Authorization\" = \"Basic {$token}\" }",
+			'code' => "[mcp_servers.{$mcp_name}]\nurl = \"{$endpoint_url}\"\nhttp_headers = { \"Authorization\" = \"Basic {$token}\" }",
 		),
 		'trae' => array(
 			'label' => __( 'TRAE', 'dci-mcp-bridge' ),
 			'lokasi' => __( 'Settings → MCP → Add MCP Server → JSON', 'dci-mcp-bridge' ),
-			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_slug}\": {\n      \"type\": \"streamable-http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
+			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"type\": \"streamable-http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
 		),
 		'openclaw' => array(
 			'label' => __( 'OpenClaw', 'dci-mcp-bridge' ),
 			'lokasi' => __( 'Perintah terminal (tersimpan otomatis di openclaw.json → mcp.servers)', 'dci-mcp-bridge' ),
-			'code' => "openclaw mcp add {$mcp_slug} \\\n  --url {$endpoint_url} \\\n  --transport streamable-http \\\n  --header \"Authorization: Basic {$token}\"\n\n# verifikasi:\nopenclaw mcp probe {$mcp_slug}",
+			'code' => "openclaw mcp add {$mcp_name} \\\n  --url {$endpoint_url} \\\n  --transport streamable-http \\\n  --header \"Authorization: Basic {$token}\"\n\n# verifikasi:\nopenclaw mcp probe {$mcp_name}",
 		),
 		'antigravity' => array(
 			'label' => __( 'Antigravity (Google)', 'dci-mcp-bridge' ),
 			'lokasi' => __( '~/.gemini/antigravity/mcp_config.json (perhatikan: serverUrl, bukan url)', 'dci-mcp-bridge' ),
-			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_slug}\": {\n      \"serverUrl\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
+			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"serverUrl\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
 		),
 		'hermes' => array(
 			'label' => __( 'Hermes', 'dci-mcp-bridge' ),
 			'lokasi' => __( 'config.yaml — blok mcp_servers (cek dokumentasi versi Anda)', 'dci-mcp-bridge' ),
-			'code' => "mcp_servers:\n  {$mcp_slug}:\n    url: \"{$endpoint_url}\"\n    headers:\n      Authorization: \"Basic {$token}\"",
+			'code' => "mcp_servers:\n  {$mcp_name}:\n    url: \"{$endpoint_url}\"\n    headers:\n      Authorization: \"Basic {$token}\"",
 		),
 		'autoclaw' => array(
 			'label' => __( 'AutoClaw', 'dci-mcp-bridge' ),
 			'lokasi' => __( 'UI: Settings → MCP Servers → Add (restart sesi setelah simpan)', 'dci-mcp-bridge' ),
-			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_slug}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
+			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
 		),
 		'zcode' => array(
 			'label' => __( 'Z Code', 'dci-mcp-bridge' ),
 			'lokasi' => __( '~/.zcode/cli/config.json — di dalam objek "mcp" → "servers"', 'dci-mcp-bridge' ),
-			'code' => "{\n  \"mcp\": {\n    \"servers\": {\n      \"{$mcp_slug}\": {\n        \"type\": \"http\",\n        \"url\": \"{$endpoint_url}\",\n        \"headers\": {\n          \"Authorization\": \"Basic {$token}\"\n        }\n      }\n    }\n  }\n}",
+			'code' => "{\n  \"mcp\": {\n    \"servers\": {\n      \"{$mcp_name}\": {\n        \"type\": \"http\",\n        \"url\": \"{$endpoint_url}\",\n        \"headers\": {\n          \"Authorization\": \"Basic {$token}\"\n        }\n      }\n    }\n  }\n}",
 		),
 		'custom' => array(
 			'label' => __( 'Klien Lain (Custom)', 'dci-mcp-bridge' ),
 			'lokasi' => __( 'Pola standar mcpServers — sesuaikan lokasi file dengan klien Anda', 'dci-mcp-bridge' ),
-			'code' => "/* Format standar (Claude/Cursor/dkk) */\n{\n  \"mcpServers\": {\n    \"{$mcp_slug}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}\n\n/* Cadangan bila klien hanya mendukung STDIO (perlu Node.js): */\n{\n  \"mcpServers\": {\n    \"{$mcp_slug}\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"mcp-remote\", \"{$endpoint_url}\", \"--header\", \"Authorization: Basic {$token}\"]\n    }\n  }\n}",
+			'code' => "/* Format standar (Claude/Cursor/dkk) */\n{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}\n\n/* Cadangan bila klien hanya mendukung STDIO (perlu Node.js): */\n{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"mcp-remote\", \"{$endpoint_url}\", \"--header\", \"Authorization: Basic {$token}\"]\n    }\n  }\n}",
 		),
 	);
 
@@ -2367,6 +2454,15 @@ function dci_mcp_bridge_render_admin_page() {
 			<h2><span class="dashicons dashicons-admin-links"></span> <?php esc_html_e( 'Menghubungkan AI Agent', 'dci-mcp-bridge' ); ?></h2>
 			<p style="margin-top:0;"><?php esc_html_e( 'Endpoint MCP server (protokol streamable HTTP, revisi 2025-11-25 / 2026-07-28):', 'dci-mcp-bridge' ); ?></p>
 			<p><code class="dci-code"><?php echo esc_url( $endpoint_url ); ?></code></p>
+			<p style="margin-top:0;">
+				<?php
+				printf(
+					/* translators: %s: nama server MCP. */
+					esc_html__( 'Nama server MCP yang tercantum di semua potongan: %s — domain situs ini + penanda "-wordpress" agar jelas server ini menghubungkan AI ke WordPress situs Anda (bisa diganti lewat konstanta DCI_MCP_SERVER_NAME di wp-config.php).', 'dci-mcp-bridge' ),
+					'<code class="dci-code">' . esc_html( $mcp_name ) . '</code>'
+				);
+				?>
+			</p>
 			<ol style="margin-bottom:12px;">
 				<li><?php esc_html_e( 'Siapkan user WordPress khusus untuk AI (disarankan peran Editor, bukan Administrator).', 'dci-mcp-bridge' ); ?></li>
 				<li><?php esc_html_e( 'Buat Application Password: Users → Profile → Application Passwords, lalu salin.', 'dci-mcp-bridge' ); ?></li>
@@ -2376,7 +2472,7 @@ function dci_mcp_bridge_render_admin_page() {
 			<table class="form-table" role="presentation" style="max-width:640px;">
 				<tr>
 					<th scope="row"><label for="dci-mcp-user"><?php esc_html_e( 'Username WordPress', 'dci-mcp-bridge' ); ?></label></th>
-					<td><input type="text" id="dci-mcp-user" class="regular-text" autocomplete="off" placeholder="mis. miftakululum" /></td>
+					<td><input type="text" id="dci-mcp-user" class="regular-text" autocomplete="off" placeholder="mis. johndoe" /></td>
 				</tr>
 				<tr>
 					<th scope="row"><label for="dci-mcp-pass"><?php esc_html_e( 'Application Password', 'dci-mcp-bridge' ); ?></label></th>
@@ -2384,8 +2480,7 @@ function dci_mcp_bridge_render_admin_page() {
 				</tr>
 			</table>
 			<p class="description" style="margin-top:0;">
-				<?php esc_html_e( 'Keduanya hanya dipakai di browser ini untuk menghitung header autentikasi — tidak dikirim ke mana pun, tidak disimpan, dan hilang saat halaman ditutup. Nama MCP di bawah otomatis diambil dari domain situs ini:', 'dci-mcp-bridge' ); ?>
-				<code class="dci-code"><?php echo esc_html( $mcp_slug ); ?></code>
+				<?php esc_html_e( 'Keduanya hanya dipakai di browser ini untuk menghitung header autentikasi — tidak dikirim ke mana pun, tidak disimpan, dan hilang saat halaman ditutup.', 'dci-mcp-bridge' ); ?>
 			</p>
 
 			<?php foreach ( $snippets as $snippet ) : ?>
