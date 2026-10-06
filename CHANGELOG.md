@@ -6,6 +6,21 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.9.2] — 2026-10-08
+
+### Keamanan
+- **Audit menyeluruh + sistem pencegahan permanen** (docs/QA-PLAYBOOK.md): inventaris
+  15 insiden sepanjang proyek (lapangan, internal, proses), diklasifikasikan ke 7 kelas
+  akar-masalah, tiap kelas diberi aturan wajib.
+- **Anti-leak**: 6 titik domain klien nyata pada contoh/dokumentasi diganti contoh netral
+  (www.namadomain.co.id); terdeteksi audit setelah dua insiden serupa sebelumnya
+  (username asli → v1.6.1, nama klien di contoh → v1.8.1).
+- **tools/verify.php**: gerbang rilis otomatis 7 lapis (lint+harness in-process,
+  konsistensi versi 5 tempat, anti-typo, anti-leak, konsistensi UI↔registry, ZIP) —
+  tanpa eksekusi shell (lolos tinjauan keamanan command-injection).
+- **tools/harness.php** kini bagian dari repo (self-contained; sebelumnya di luar) +
+  T17: tabel ability halaman admin wajib identik dengan registry (anti lupa baris).
+
 ## [1.9.1] — 2026-10-08
 
 ### Diperbaiki

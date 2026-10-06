@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.9.1
+Stable tag: 1.9.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -98,13 +98,13 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 = 1.6.1 =
 * Perbaikan penting (laporan lapangan): kartu AI Puffer tetap salah deteksi meski provider sudah aktif — kunci API provider ternyata tersimpan di `aipkit_options['providers']` (bukan `['api_keys']` yang hanya memuat Public API; terverifikasi dari `classes/ai/settings.php` plugin AI Puffer). Deteksi kini membaca cabang yang benar, memakai aksesor resmi `get_all_providers()` bila tersedia.
 * Deteksi "terpasang" kini kanonik WordPress (`is_plugin_active` + versi dari `get_plugins`) — tahan terhadap perbedaan versi plugin AI Puffer; versi terpasang kini tampil di kartu status, plus petunjuk bila versi terlalu lama untuk jalur internal.
-* Nama MCP kini `<domain>-wordpress` (mis. `djayakontainer-wordpress`) — jelas bahwa server ini menghubungkan AI ke WordPress situs Anda; bisa dioverride konstanta `DCI_MCP_SERVER_NAME`.
+* Nama MCP kini `<domain>-wordpress` (mis. domain `tokokue.co.id` → `tokokue-wordpress`) — jelas bahwa server ini menghubungkan AI ke WordPress situs Anda; bisa dioverride konstanta `DCI_MCP_SERVER_NAME`.
 * Contoh username pada form koneksi diganti generik (`johndoe`).
 * Harness: +5 uji regresi (total 40/40 PASS).
 
 = 1.6.0 =
 * Baru: **generator koneksi AI agent** di halaman DCI Bridge — potongan konfigurasi siap-copy-paste untuk 10 klien: Claude Code, Cursor, Codex CLI (TOML), TRAE, OpenClaw (CLI), Antigravity (serverUrl), Hermes (YAML), AutoClaw, Z Code, dan pola custom (termasuk cadangan mcp-remote untuk klien STDIO-only).
-* Baru: **nama MCP otomatis dari domain situs** (mis. www.djayakontainer.co.id → djayakontainer).
+* Baru: **nama MCP otomatis dari domain situs** (mis. www.tokokue.co.id → tokokue).
 * Baru: **kalkulator autentikasi di-browser** — isi username + Application Password sekali, seluruh potongan terisi header Authorization otomatis (base64 dihitung di browser, tidak dikirim ke mana pun, tidak disimpan).
 * Baru: tombol Salin per potongan; format tiap klien diambil dari dokumentasi resminya (bukan opini).
 

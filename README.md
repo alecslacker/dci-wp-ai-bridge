@@ -1,6 +1,6 @@
 # DCI MCP Bridge
 
-![Version](https://img.shields.io/badge/version-1.5.0-blue)
+![Version](https://img.shields.io/badge/version-1.9.2-blue)
 ![License](https://img.shields.io/badge/license-GPL--2.0--or--later-green)
 ![WordPress](https://img.shields.io/badge/WordPress-6.9%2B-blueviolet)
 ![PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4)

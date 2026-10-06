@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.9.1
+ * Version:           1.9.2
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.9.1' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.9.2' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -2661,7 +2661,7 @@ function dci_mcp_bridge_ability_table() {
 
 /**
  * Nama server MCP untuk snippet koneksi: domain situs + penanda WordPress.
- * Contoh: www.djayakontainer.co.id → "djayakontainer-wordpress".
+ * Contoh: www.namadomain.co.id → "namadomain-wordpress".
  * Nama situs di depan agar daftar klien mengelompok per situs (agensi
  * multi-klien); sufiks -wordpress menyatakan sistem yang disambungkan.
  * Override: konstanta DCI_MCP_SERVER_NAME di wp-config.php.
@@ -2707,8 +2707,8 @@ function dci_mcp_bridge_render_admin_page() {
 		$masked_list[] = '••••' . substr( $stored_key, -4 );
 	}
 
-	/* Nama MCP: domain situs + penanda WordPress (www.djayakontainer.co.id
-	 * → djayakontainer-wordpress). Menyatakan sistem yang disambungkan tanpa
+	/* Nama MCP: domain situs + penanda WordPress (www.namadomain.co.id
+	 * → namadomain-wordpress). Menyatakan sistem yang disambungkan tanpa
 	 * mengorbankan pengelompokan per-situs (agensi multi-klien).
 	 * Override manual: define( 'DCI_MCP_SERVER_NAME', 'nama-lain' ); */
 	$mcp_name = dci_mcp_bridge_server_name();
@@ -3031,7 +3031,7 @@ function dci_mcp_bridge_render_admin_page() {
 				?>
 			</p>
 			<p class="description" style="margin-bottom:0;">
-				<?php esc_html_e( 'Untuk tugas yang menyangkut isi situs sendiri, mintalah AI memakai dci/search-content dan dci/get-content (membaca database langsung) — bukan browsing — sehingga tidak mungkin salah domain. Menyebut domain di prompt juga tetap membantu: "…pada situs www.djayakontainer.co.id".', 'dci-mcp-bridge' ); ?>
+				<?php esc_html_e( 'Untuk tugas yang menyangkut isi situs sendiri, mintalah AI memakai dci/search-content dan dci/get-content (membaca database langsung) — bukan browsing — sehingga tidak mungkin salah domain. Menyebut domain di prompt juga tetap membantu: "…pada situs www.namadomain.co.id".', 'dci-mcp-bridge' ); ?>
 			</p>
 		</div>
 		<?php endif; ?>
