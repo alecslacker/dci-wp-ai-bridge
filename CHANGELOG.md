@@ -6,6 +6,25 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.5.1] — 2026-10-07
+
+### Diperbaiki
+- **Deteksi mesin AI Puffer gagal di situs nyata** (dilaporkan Mas Wondho: kartu status
+  "NONAKTIF" padahal plugin terpasang): akar masalah — kelas internal AIPKit berada di
+  namespace `WPAICG` (terverifikasi: `WPAICG\Core\AIPKit_AI_Caller`,
+  `WPAICG\AIPKit_Providers`, `WPAICG\AIPKIT_AI_Settings`), sedangkan plugin memeriksa
+  nama kelas global. Kini `dci_mcp_bridge_aipkit_class()` mencoba kandidat FQCN
+  `WPAICG\Core\` → `WPAICG\` → global. Dampak perbaikan: kartu status akurat dan
+  `dci/generate-text` memakai jalur internal (bukan loopback REST yang timeout).
+- Label kartu "AI Puffer (Public API)" diperjelas menjadi **"AI Puffer (Mesin AI)"** —
+  fitur "AI connectors" milik AI Puffer tidak diperlukan oleh jembatan ini; Public API
+  access juga bukan prasyarat.
+
+### Pengujian
+- Harness runtime diperluas dengan stub namespace WPAICG + 4 uji regresi baru
+  (deteksi kelas, jalur internal tanpa HTTP, penolakan provider tak dikenal,
+  status installed) — total **35/35 PASS**.
+
 ## [1.5.0] — 2026-10-07
 
 ### Ditambahkan

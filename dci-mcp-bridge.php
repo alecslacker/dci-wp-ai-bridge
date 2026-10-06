@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.5.0
+ * Version:           1.5.1
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.5.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.5.1' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -846,13 +846,40 @@ function dci_mcp_bridge_execute_publish_post( $input = array() ) {
 }
 
 /**
+ * Resolusi FQCN kelas AI Puffer dengan kandidat ruang nama.
+ *
+ * TERVERIFIKASI dari source v2.4.95: kelas internal berada di namespace
+ * WPAICG (AIPKit_AI_Caller = WPAICG\Core\AIPKit_AI_Caller; AIPKit_Providers
+ * = WPAICG\AIPKit_Providers). Kandidat global dipertahankan sebagai
+ * defensif bila plugin berubah di masa depan.
+ *
+ * @param string $short Nama kelas pendek (mis. AIPKit_AI_Caller).
+ * @return string FQCN yang ditemukan, atau '' bila tidak ada.
+ */
+function dci_mcp_bridge_aipkit_class( $short ) {
+	$candidates = array(
+		'\\WPAICG\\Core\\' . $short,
+		'\\WPAICG\\' . $short,
+		'\\' . $short,
+	);
+
+	foreach ( $candidates as $candidate ) {
+		if ( class_exists( $candidate ) ) {
+			return $candidate;
+		}
+	}
+
+	return '';
+}
+
+/**
  * Status mesin AI Puffer untuk ability get-seo-config: keberadaan kelas
  * internal + daftar nama provider yang API key-nya terisi (tanpa nilai).
  *
  * @return array
  */
 function dci_mcp_bridge_aip_status() {
-	$aip_installed = class_exists( 'AIPKit_AI_Caller' );
+	$aip_installed = '' !== dci_mcp_bridge_aipkit_class( 'AIPKit_AI_Caller' );
 	$aip_providers = array();
 	$aip_public_api = false;
 
@@ -1388,13 +1415,16 @@ function dci_mcp_bridge_aipkit_generate( array $args ) {
 	}
 
 	/* ---------- JALUR UTAMA: panggilan internal langsung ---------- */
-	if ( class_exists( 'AIPKit_AI_Caller' ) && class_exists( 'AIPKit_Providers' ) ) {
-		if ( method_exists( 'AIPKit_Providers', 'normalize_provider_label' ) ) {
-			$provider = AIPKit_Providers::normalize_provider_label( $provider );
+	$caller_class   = dci_mcp_bridge_aipkit_class( 'AIPKit_AI_Caller' );
+	$provider_class = dci_mcp_bridge_aipkit_class( 'AIPKit_Providers' );
+
+	if ( '' !== $caller_class && '' !== $provider_class ) {
+		if ( method_exists( $provider_class, 'normalize_provider_label' ) ) {
+			$provider = call_user_func( array( $provider_class, 'normalize_provider_label' ), $provider );
 		}
 
-		if ( method_exists( 'AIPKit_Providers', 'get_text_generation_providers' ) ) {
-			$valid_providers = AIPKit_Providers::get_text_generation_providers();
+		if ( method_exists( $provider_class, 'get_text_generation_providers' ) ) {
+			$valid_providers = call_user_func( array( $provider_class, 'get_text_generation_providers' ) );
 
 			if ( ! in_array( $provider, $valid_providers, true ) ) {
 				return new WP_Error(
@@ -1409,7 +1439,7 @@ function dci_mcp_bridge_aipkit_generate( array $args ) {
 			}
 		}
 
-		$caller = new AIPKit_AI_Caller( false, 'mcp' );
+		$caller = new $caller_class( false, 'mcp' );
 		$result = $caller->make_standard_call(
 			$provider,
 			$model,
@@ -2044,14 +2074,12 @@ function dci_mcp_bridge_env_status() {
 	// MCP Adapter: nama kelas inti diverifikasi dari dokumentasi resminya.
 	$mcp_active = class_exists( '\WP\MCP\Core\McpAdapter' );
 
-	// AI Puffer: deteksi via kelas internal + jumlah provider terisi.
-	$aip_installed = class_exists( 'AIPKit_AI_Caller' );
-	$aip_state     = 'nonaktif';
-	$aip_detail    = __( 'Plugin AI Puffer tidak terdeteksi — kemampuan generate teks tidak akan berfungsi.', 'dci-mcp-bridge' );
+	// AI Puffer: deteksi via kelas internal (FQCN WPAICG\...) + provider terisi.
+	$aip = dci_mcp_bridge_aip_status();
+	$aip_state  = 'nonaktif';
+	$aip_detail = __( 'Plugin AI Puffer tidak terdeteksi — kemampuan generate teks tidak akan berfungsi.', 'dci-mcp-bridge' );
 
-	if ( $aip_installed ) {
-		$aip = dci_mcp_bridge_aip_status();
-
+	if ( $aip['installed'] ) {
 		if ( ! empty( $aip['providers_configured'] ) ) {
 			$aip_state  = 'aktif';
 			$aip_detail = sprintf(
@@ -2078,7 +2106,7 @@ function dci_mcp_bridge_env_status() {
 				: __( 'Plugin MCP Adapter belum aktif (dependensi wajib).', 'dci-mcp-bridge' ),
 		),
 		array(
-			'nama'   => __( 'AI Puffer (Public API)', 'dci-mcp-bridge' ),
+			'nama'   => __( 'AI Puffer (Mesin AI)', 'dci-mcp-bridge' ),
 			'state'  => $aip_state,
 			'detail' => $aip_detail,
 		),

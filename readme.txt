@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.5.0
+Stable tag: 1.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,11 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 1. Halaman DCI Bridge — status integrasi, konfigurasi keamanan, tabel kemampuan, dan panduan koneksi AI agent.
 
 == Changelog ==
+
+= 1.5.1 =
+* Perbaikan penting: deteksi mesin AI Puffer gagal di situs nyata karena kelas internal berada di namespace WPAICG (WPAICG\Core\AIPKit_AI_Caller) — sebelumnya diperiksa sebagai kelas global, sehingga kartu status menampilkan NONAKTIF dan generate selalu jatuh ke jalur cadangan. Kini resolusi FQCN mencoba WPAICG\Core\, WPAICG\, lalu global.
+* Penamaan kartu status "AI Puffer (Public API)" diperjelas menjadi "AI Puffer (Mesin AI)" — Public API access bukan prasyarat jembatan ini.
+* Regresi: harness runtime kini menyertakan stub namespace WPAICG + 4 uji baru (35/35 PASS).
 
 = 1.5.0 =
 * Baru: **rotasi multi API key Winston AI** — tempel beberapa kunci (satu per baris) di halaman DCI Bridge, atau konstanta `DCI_WINSTON_API_KEYS` di wp-config.php. Semua kunci diputar bergantian (round-robin) agar beban kredit tersebar merata.
