@@ -6,6 +6,31 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [2.0.0] — 2026-10-08
+
+### Ditambahkan
+- **Pembaruan otomatis dari GitHub Releases** (jawaban: WordPress tidak punya pengaturan
+  bawaan untuk plugin non-wp.org — kini dibangun ke dalam plugin, tanpa dependensi):
+  - Cek `GET api.github.com/repos/alecslacker/dci-wp-ai-bridge/releases/latest`
+    (kontrak terverifikasi dari docs.github.com; draft/prerelease otomatis dikecualikan;
+    cache 1 jam), suntik via `pre_set_site_transient_update_plugins` + `plugins_api`.
+  - Repo privat didukung: token fine-grained PAT (Contents: Read-only) via kolom di
+    tab Tentang atau konstanta `DCI_GITHUB_TOKEN`; dikirim sebagai Bearer.
+  - Validasi keamanan paket: hanya HTTPS + host github.com / *.githubusercontent.com /
+    *.githubassets.com — aset host asing ditolak senyap.
+  - Kartu status di tab Tentang: TERBARU / PEMBARUAN TERSEDIA / BELUM TERSEDIA.
+- Alur rilis resmi: aset Release **wajib** bernama `dci-mcp-bridge.zip`
+  (folder `dci-mcp-bridge/` di dalamnya — dihasilkan tools/verify.php G7) supaya
+  WordPress melakukan update, bukan instalasi duplikat.
+
+### Diperbaiki (tertangkap harness T18 sebelum rilis)
+- `dci_mcp_bridge_ends_with()`: offset negatif saat needle > haystack → ValueError
+  PHP 8 — kini di-guard.
+
+### Pengujian
+- Harness +6 uji (T18: validasi host, baca rilis, suntik transien, versi sama tak
+  tersuntik, host asing ditolak, Bearer token terkirim) — total **60/60 PASS**.
+
 ## [1.9.2] — 2026-10-08
 
 ### Keamanan

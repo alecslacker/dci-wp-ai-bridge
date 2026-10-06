@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.9.2
+ * Version:           2.0.0
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.9.2' );
+define( 'DCI_MCP_BRIDGE_VERSION', '2.0.0' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -2454,6 +2454,219 @@ function dci_mcp_bridge_execute_check_originality( $input = array() ) {
 }
 
 /* ============================================================
+ * BAGIAN 7 — PEMBARUAN OTOMATIS DARI GITHUB RELEASES
+ *
+ * Kontrak diverifikasi dari docs.github.com (REST Releases):
+ * GET https://api.github.com/repos/{owner}/{repo}/releases/latest
+ * → 200 { tag_name, html_url, assets[]: { name, browser_download_url } };
+ * hanya rilis publik (draft/prerelease dikecualikan); 404 bila belum ada
+ * rilis ATAU repo privat tanpa token. Auth opsional: Bearer <token>
+ * (fine-grained PAT, Contents: Read-only, khusus repo ini).
+ * Paket pembaruan WAJIB aset Release bernama dci-mcp-bridge.zip
+ * (struktur folder di dalam zip harus "dci-mcp-bridge/" — dijamin oleh
+ * tools/verify.php gerbang 7) agar WordPress meng-update, bukan duplikat.
+ * ============================================================ */
+
+/**
+ * Repo sumber pembaruan (bisa dioverride via filter).
+ *
+ * @return string "owner/repo".
+ */
+function dci_mcp_bridge_github_repo() {
+	return apply_filters( 'dci_mcp_bridge_github_repo', 'alecslacker/dci-wp-ai-bridge' );
+}
+
+/**
+ * Token GitHub opsional untuk repo privat: konstanta menang, lalu opsi admin.
+ *
+ * @return string
+ */
+function dci_mcp_bridge_github_token() {
+	if ( defined( 'DCI_GITHUB_TOKEN' ) && is_string( DCI_GITHUB_TOKEN ) && '' !== trim( DCI_GITHUB_TOKEN ) ) {
+		return trim( DCI_GITHUB_TOKEN );
+	}
+
+	$opts = get_option( 'dci_mcp_bridge_options', array() );
+
+	return ( isset( $opts['github_token'] ) && is_string( $opts['github_token'] ) ) ? trim( $opts['github_token'] ) : '';
+}
+
+/**
+ * Validasi URL unduhan: hanya HTTPS di domain GitHub yang sah
+ * (anti pembelokan paket ke host asing — gerbang keamanan unduhan).
+ *
+ * @param string $url URL aset.
+ * @return bool
+ */
+function dci_mcp_bridge_is_github_url( $url ) {
+	$host   = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+	$scheme = (string) wp_parse_url( $url, PHP_URL_SCHEME );
+
+	if ( 'https' !== $scheme || '' === $host ) {
+		return false;
+	}
+
+	foreach ( array( 'github.com', 'githubusercontent.com', 'githubassets.com' ) as $allowed ) {
+		if ( $host === $allowed || dci_mcp_bridge_ends_with( '.' . $allowed, $host, true ) ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Helper akhiran string (case-insensitive opsional).
+ *
+ * @param string $needle  Akhiran yang dicari.
+ * @param string $haystack Teks sumber.
+ * @param bool   $insensitive Abaikan besar-kecil.
+ * @return bool
+ */
+function dci_mcp_bridge_ends_with( $needle, $haystack, $insensitive = false ) {
+	if ( '' === $needle ) { return true; }
+	if ( strlen( $needle ) > strlen( $haystack ) ) { return false; }
+	if ( $insensitive ) {
+		return false !== stripos( $haystack, $needle, strlen( $haystack ) - strlen( $needle ) );
+	}
+	return substr( $haystack, -strlen( $needle ) ) === $needle;
+}
+
+/**
+ * Ambil info rilis terbaru (cache 1 jam; 404/tanpa rilis → null).
+ *
+ * @param bool $force_cache_bypass Lewati cache.
+ * @return array|null {version, zip, url} atau null.
+ */
+function dci_mcp_bridge_fetch_latest_release( $force_cache_bypass = false ) {
+	$cache_key = 'dci_mcp_bridge_latest_release';
+
+	if ( ! $force_cache_bypass ) {
+		$cached = get_transient( $cache_key );
+		if ( false !== $cached && is_array( $cached ) ) { return $cached; }
+	}
+
+	$token = dci_mcp_bridge_github_token();
+	$headers = array( 'Accept' => 'application/vnd.github+json' );
+
+	if ( '' !== $token ) {
+		$headers['Authorization'] = 'Bearer ' . $token;
+	}
+
+	$response = wp_remote_get(
+		'https://api.github.com/repos/' . dci_mcp_bridge_github_repo() . '/releases/latest',
+		array( 'timeout' => 15, 'headers' => $headers )
+	);
+
+	if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+		return null; // belum ada rilis / repo privat tanpa token / gangguan — senyap.
+	}
+
+	$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+	if ( ! is_array( $body ) || empty( $body['tag_name'] ) ) {
+		return null;
+	}
+
+	$version = ltrim( (string) $body['tag_name'], 'v' );
+	$zip_url = '';
+
+	if ( ! empty( $body['assets'] ) && is_array( $body['assets'] ) ) {
+		$fallback_zip = '';
+		foreach ( $body['assets'] as $asset ) {
+			if ( ! is_array( $asset ) || empty( $asset['browser_download_url'] ) ) { continue; }
+			$name = isset( $asset['name'] ) ? (string) $asset['name'] : '';
+			if ( 'dci-mcp-bridge.zip' === $name ) {
+				$zip_url = (string) $asset['browser_download_url'];
+				break;
+			}
+			if ( '' === $fallback_zip && dci_mcp_bridge_ends_with( '.zip', $name, true ) ) {
+				$fallback_zip = (string) $asset['browser_download_url'];
+			}
+		}
+		if ( '' === $zip_url ) { $zip_url = $fallback_zip; }
+	}
+
+	if ( '' === $zip_url || '' === $version || ! dci_mcp_bridge_is_github_url( $zip_url ) ) {
+		return null;
+	}
+
+	$data = array(
+		'version' => $version,
+		'zip'     => $zip_url,
+		'url'     => isset( $body['html_url'] ) ? (string) $body['html_url'] : '',
+	);
+
+	set_transient( $cache_key, $data, HOUR_IN_SECONDS );
+
+	return $data;
+}
+
+/**
+ * Suntikkan pembaruan ke transien WordPress (muncul di halaman Updates).
+ *
+ * @param object $transient Transien update_plugins.
+ * @return object
+ */
+function dci_mcp_bridge_inject_update( $transient ) {
+	if ( ! is_object( $transient ) ) {
+		return $transient;
+	}
+
+	$latest = dci_mcp_bridge_fetch_latest_release();
+
+	if ( null === $latest || ! isset( $latest['version'], $latest['zip'] ) ) {
+		return $transient;
+	}
+
+	if ( version_compare( DCI_MCP_BRIDGE_VERSION, $latest['version'], '>=' ) ) {
+		return $transient;
+	}
+
+	$transient->response[ plugin_basename( __FILE__ ) ] = (object) array(
+		'slug'        => 'dci-mcp-bridge',
+		'plugin'      => plugin_basename( __FILE__ ),
+		'new_version' => $latest['version'],
+		'url'         => $latest['url'],
+		'package'     => $latest['zip'],
+	);
+
+	return $transient;
+}
+add_filter( 'pre_set_site_transient_update_plugins', 'dci_mcp_bridge_inject_update' );
+
+/**
+ * Info pembaruan di layar detail plugin (mencegah permintaan ke wp.org).
+ *
+ * @param object|false $result Hasil bawaan.
+ * @param string       $action  Aksi plugins_api.
+ * @param object       $args    Argumen.
+ * @return object|false
+ */
+function dci_mcp_bridge_plugins_api( $result, $action, $args ) {
+	if ( 'plugin_information' !== $action || ! isset( $args->slug ) || 'dci-mcp-bridge' !== $args->slug ) {
+		return $result;
+	}
+
+	$latest = dci_mcp_bridge_fetch_latest_release();
+
+	if ( null === $latest ) {
+		return $result;
+	}
+
+	return (object) array(
+		'name'          => 'DCI MCP Bridge',
+		'slug'          => 'dci-mcp-bridge',
+		'version'       => $latest['version'],
+		'download_link' => $latest['zip'],
+		'sections'      => array(
+			'description' => __( 'Pembaruan dari GitHub Releases (alecslacker/dci-wp-ai-bridge). Rincian perubahan lengkap ada di halaman rilis.', 'dci-mcp-bridge' ),
+		),
+	);
+}
+add_filter( 'plugins_api', 'dci_mcp_bridge_plugins_api', 10, 3 );
+
+/* ============================================================
  * BAGIAN 6 — HALAMAN ADMIN "DCI BRIDGE" (TAMPILAN PROFESIONAL)
  *
  * Menu wp-admin khusus: status kesehatan integrasi, daftar
@@ -2574,6 +2787,47 @@ function dci_mcp_bridge_handle_save_key() {
 	exit;
 }
 add_action( 'admin_post_dci_bridge_save_key', 'dci_mcp_bridge_handle_save_key' );
+
+/**
+ * Simpan token GitHub (opsional, untuk repo privat) dari tab Tentang.
+ */
+function dci_mcp_bridge_handle_save_github_token() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( esc_html__( 'Anda tidak berwenang melakukan ini.', 'dci-mcp-bridge' ) );
+	}
+
+	check_admin_referer( 'dci_bridge_save_github_token' );
+
+	$token = isset( $_POST['dci_github_token'] ) ? sanitize_text_field( wp_unslash( $_POST['dci_github_token'] ) ) : '';
+
+	$opts = get_option( 'dci_mcp_bridge_options', array() );
+
+	if ( ! is_array( $opts ) ) {
+		$opts = array();
+	}
+
+	if ( '' !== $token ) {
+		$opts['github_token'] = $token;
+	} else {
+		unset( $opts['github_token'] );
+	}
+
+	update_option( 'dci_mcp_bridge_options', $opts );
+	delete_transient( 'dci_mcp_bridge_latest_release' );
+
+	wp_safe_redirect(
+		add_query_arg(
+			array(
+				'page'      => 'dci-mcp-bridge',
+				'tab'       => 'tentang',
+				'dci-saved' => '1',
+			),
+			admin_url( 'admin.php' )
+		)
+	);
+	exit;
+}
+add_action( 'admin_post_dci_bridge_save_github_token', 'dci_mcp_bridge_handle_save_github_token' );
 
 /**
  * Status tiga dependensi: MCP Adapter, AI Puffer (Public API), Rank Math.
@@ -3053,6 +3307,51 @@ function dci_mcp_bridge_render_admin_page() {
 					<tr><th scope="row"><?php esc_html_e( 'Layanan pihak ketiga', 'dci-mcp-bridge' ); ?></th><td><?php esc_html_e( 'Winston AI (deteksi AI & plagiarisme) — teks dikirim hanya saat pemeriksaan integritas dijalankan, atas permintaan eksplisit.', 'dci-mcp-bridge' ); ?></td></tr>
 				</tbody>
 			</table>
+		</div>
+
+		<div class="dci-card">
+			<h2><span class="dashicons dashicons-update"></span> <?php esc_html_e( 'Pembaruan Otomatis dari GitHub', 'dci-mcp-bridge' ); ?></h2>
+			<?php
+			$latest_rel = dci_mcp_bridge_fetch_latest_release();
+			if ( null === $latest_rel ) {
+				echo '<p style="margin-top:0;"><span class="dci-state dci-state-perlu-konfigurasi">' . esc_html__( 'BELUM TERSEDIA', 'dci-mcp-bridge' ) . '</span> ';
+				esc_html_e( 'Belum ada rilis GitHub yang bisa dibaca. Jika repo bersifat privat, isi token di bawah; jika sudah ada rilis, pastikan aset dci-mcp-bridge.zip dilampirkan pada rilis tersebut.', 'dci-mcp-bridge' );
+				echo '</p>';
+			} elseif ( version_compare( DCI_MCP_BRIDGE_VERSION, $latest_rel['version'], '>=' ) ) {
+				echo '<p style="margin-top:0;"><span class="dci-state dci-state-aktif">' . esc_html__( 'TERBARU', 'dci-mcp-bridge' ) . '</span> ';
+				printf(
+					/* translators: %s: versi terpasang. */
+					esc_html__( 'Versi terpasang v%s adalah yang terbaru dari GitHub Releases.', 'dci-mcp-bridge' ),
+					esc_html( DCI_MCP_BRIDGE_VERSION )
+				);
+				echo '</p>';
+			} else {
+				echo '<p style="margin-top:0;"><span class="dci-state dci-state-perlu-konfigurasi">' . esc_html__( 'PEMBARUAN TERSEDIA', 'dci-mcp-bridge' ) . '</span> ';
+				printf(
+					/* translators: 1: versi terpasang, 2: versi terbaru. */
+					esc_html__( 'v%1$s → v%2$s — buka menu Dashboard → Updates untuk memasang, atau perbarui dari menu Plugins seperti plugin biasa.', 'dci-mcp-bridge' ),
+					esc_html( DCI_MCP_BRIDGE_VERSION ),
+					esc_html( $latest_rel['version'] )
+				);
+				echo '</p>';
+			}
+			?>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="dci_bridge_save_github_token" />
+				<?php wp_nonce_field( 'dci_bridge_save_github_token' ); ?>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="dci_github_token"><?php esc_html_e( 'Token GitHub (opsional)', 'dci-mcp-bridge' ); ?></label></th>
+						<td>
+							<input type="text" id="dci_github_token" name="dci_github_token" class="regular-text code" value="" autocomplete="off" placeholder="<?php esc_attr_e( 'Hanya perlu bila repo privat — fine-grained PAT, Contents: Read-only', 'dci-mcp-bridge' ); ?>" />
+							<p class="description">
+								<?php esc_html_e( 'Plugin memeriksa GitHub Releases (cache 1 jam) dan bila ada versi baru, pembaruan muncul di halaman Updates WordPress seperti plugin resmi. Token tersimpan tersembunyi dan hanya dipakai untuk membaca rilis.', 'dci-mcp-bridge' ); ?>
+							</p>
+						</td>
+					</tr>
+				</table>
+				<?php submit_button( __( 'Simpan Token', 'dci-mcp-bridge' ), 'secondary', 'submit', true ); ?>
+			</form>
 		</div>
 		<?php endif; ?>
 

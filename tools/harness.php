@@ -37,6 +37,7 @@ namespace WPAICG {
 /* ---------- Harness global ---------- */
 namespace {
 	define( 'ABSPATH', 'C:/fake/' );
+	define( 'HOUR_IN_SECONDS', 3600 );
 
 	$GLOBALS['dci_store']      = array();
 	$GLOBALS['dci_abilities']  = array();
@@ -122,6 +123,20 @@ namespace {
 	function wp_specialchars_decode( $text, $quotes = '' ) { return htmlspecialchars_decode( (string) $text, $quotes ? $quotes : ENT_QUOTES ); }
 	function wp_revisions_enabled( $post ) { return true; }
 	function wp_save_post_revision( $post_id ) { $GLOBALS['dci_revisions'][] = $post_id; return (int) $post_id; }
+	function plugin_basename( $file ) { return 'dci-mcp-bridge/dci-mcp-bridge.php'; }
+	function apply_filters( $tag, $value ) { return $value; }
+	function get_transient( $k ) { return isset( $GLOBALS['dci_transients'][ $k ] ) ? $GLOBALS['dci_transients'][ $k ] : false; }
+	function set_transient( $k, $v, $exp = 0 ) { $GLOBALS['dci_transients'][ $k ] = $v; return true; }
+	function delete_transient( $k ) { unset( $GLOBALS['dci_transients'][ $k ] ); return true; }
+	$GLOBALS['dci_transients'] = array();
+	$GLOBALS['dci_get_log']    = array();
+	function wp_remote_get( $url, $args = array() ) {
+		$GLOBALS['dci_get_log'][] = array( 'url' => $url, 'args' => $args );
+		if ( empty( $GLOBALS['dci_get_queue'] ) ) { return array( 'response' => array( 'code' => 404 ), 'body' => '' ); }
+		$next = array_shift( $GLOBALS['dci_get_queue'] );
+		return array( 'response' => array( 'code' => $next['code'] ), 'body' => json_encode( $next['body'] ) );
+	}
+	$GLOBALS['dci_get_queue'] = array();
 
 	/* ---------- muat plugin (path relatif repo) ---------- */
 	require __DIR__ . '/../dci-mcp-bridge.php';
@@ -336,6 +351,47 @@ namespace {
 	check( 'T15c meta artikel terbit via allow_published', ! is_wp_error( $meta_pub ) && in_array( 'rank_math_title', $meta_pub['updated'], true ) );
 	$meta_rej = dci_mcp_bridge_execute_set_post_seo_meta( array( 'post_id' => 101, 'meta_title' => 'Tanpa Flag' ) );
 	check( 'T15d tanpa allow_published → ditolak', is_wp_error( $meta_rej ) );
+
+	/* T18 — updater GitHub (v2.0.0) */
+	check( 'T18a host GitHub valid / host asing ditolak', true === dci_mcp_bridge_is_github_url( 'https://github.com/x/y.zip' ) && true === dci_mcp_bridge_is_github_url( 'https://objects.githubusercontent.com/asset.zip' ) && false === dci_mcp_bridge_is_github_url( 'https://evil.com/github.com/a.zip' ) && false === dci_mcp_bridge_is_github_url( 'http://github.com/a.zip' ) );
+
+	$GLOBALS['dci_get_queue'] = array(
+		array( 'code' => 200, 'body' => array(
+			'tag_name' => 'v99.0.0',
+			'html_url' => 'https://github.com/alecslacker/dci-wp-ai-bridge/releases/tag/v99.0.0',
+			'assets' => array( array( 'name' => 'dci-mcp-bridge.zip', 'browser_download_url' => 'https://github.com/alecslacker/dci-wp-ai-bridge/releases/download/v99.0.0/dci-mcp-bridge.zip' ) ),
+		) ),
+	);
+	$GLOBALS['dci_transients'] = array();
+	$rel = dci_mcp_bridge_fetch_latest_release();
+	check( 'T18b rilis terbaca (tag v → 99.0.0, aset tepat)', null !== $rel && '99.0.0' === $rel['version'] && false !== strpos( $rel['zip'], 'dci-mcp-bridge.zip' ) );
+
+	$tr = new stdClass();
+	$tr->response = array();
+	$tr2 = dci_mcp_bridge_inject_update( $tr );
+	$entry = $tr2->response['dci-mcp-bridge/dci-mcp-bridge.php'] ?? null;
+	check( 'T18c pembaruan tersuntik ke transien WP', null !== $entry && '99.0.0' === $entry->new_version && false !== strpos( $entry->package, 'github.com' ) );
+
+	$GLOBALS['dci_get_queue'] = array(
+		array( 'code' => 200, 'body' => array( 'tag_name' => 'v0.1.0', 'html_url' => 'x', 'assets' => array( array( 'name' => 'dci-mcp-bridge.zip', 'browser_download_url' => 'https://github.com/a/b.zip' ) ) ) ),
+	);
+	$GLOBALS['dci_transients'] = array();
+	$tr3 = dci_mcp_bridge_inject_update( new stdClass() );
+	check( 'T18d versi lama/lokal lebih baru → tak tersuntik', empty( $tr3->response ) );
+
+	$GLOBALS['dci_get_queue'] = array(
+		array( 'code' => 200, 'body' => array( 'tag_name' => 'v99.0.0', 'html_url' => 'x', 'assets' => array( array( 'name' => 'dci-mcp-bridge.zip', 'browser_download_url' => 'https://evil.example.com/bad.zip' ) ) ) ),
+	);
+	$GLOBALS['dci_transients'] = array();
+	check( 'T18e aset dari host asing → ditolak senyap', null === dci_mcp_bridge_fetch_latest_release() );
+
+	$GLOBALS['dci_get_log']    = array();
+	$GLOBALS['dci_get_queue']  = array( array( 'code' => 404, 'body' => array() ) );
+	$GLOBALS['dci_transients'] = array();
+	$GLOBALS['dci_store']      = array( 'dci_mcp_bridge_options' => array( 'github_token' => 'ghp_test123' ) );
+	dci_mcp_bridge_fetch_latest_release();
+	$used_header = isset( $GLOBALS['dci_get_log'][0]['args']['headers']['Authorization'] ) ? $GLOBALS['dci_get_log'][0]['args']['headers']['Authorization'] : '';
+	check( 'T18f token privat terkirim sebagai Bearer', 'Bearer ghp_test123' === $used_header );
 
 	echo "\n=== HASIL: $PASS PASS, $FAIL FAIL ===\n";
 	if ( ! defined( 'DCI_HARNESS_NO_EXIT' ) ) {

@@ -89,3 +89,7 @@ semua file yang dikirim, termasuk dokumen.
 - [ ] Integrasi pihak ketiga baru: bukti `file:line` dari source di komentar (Kelas A).
 - [ ] Teks contoh/UI: placeholder netral saja (Kelas D).
 - [ ] Bump versi di 4 file sekaligus (plugin header, konstanta, readme, CHANGELOG).
+- [ ] RILIS (sejak v2.0.0): buat GitHub Release dari tag, **lampirkan aset
+      `dci-mcp-bridge.zip`** (hasil G7 verify.php) — tanpa aset ini updater tidak
+      menemukan paket, dan paket tanpa struktur folder yang benar akan terpasang
+      sebagai duplikat.
