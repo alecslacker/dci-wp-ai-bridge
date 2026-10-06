@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.8.0
+ * Version:           1.8.1
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.8.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.8.1' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -2817,10 +2817,14 @@ function dci_mcp_bridge_render_admin_page() {
 
 		<div class="dci-card">
 			<h2><span class="dashicons dashicons-format-chat"></span> <?php esc_html_e( 'Contoh Perintah (tinggal salin ke AI agent Anda)', 'dci-mcp-bridge' ); ?></h2>
-			<p style="margin-top:0;"><?php esc_html_e( 'Ganti bagian dalam kurung sesuai kebutuhan. Semua perintah memakai kemampuan plugin ini secara otomatis:', 'dci-mcp-bridge' ); ?></p>
-			<pre class="dci-snip" style="overflow:auto;padding:14px;background:#1d2327;color:#d4d4d4;border-radius:6px;"><code><?php echo esc_html( "1) Membuat artikel baru (masuk draft):\n   \"Buatkan artikel tentang [topik/kata kunci] untuk situs ini,\n    sekitar [800] kata, masuk draft dulu. Pakai data aktual\n    sebagai referensi dan sertakan tautan internal ke artikel terkait.\"\n\n2) Mengaudit dan memperbaiki artikel:\n   \"Audit artikel berjudul [judul] dengan dci/audit-article,\n    lalu perbaiki semua temuan WARN/FAIL ke draft-nya.\"\n\n3) Pemeriksaan integritas menjelang final (berbiaya kredit):\n   \"Jalankan dci/check-originality pada artikel [judul],\n    bahasa id. Laporkan skor dan bagian yang perlu ditulis ulang.\"\n\n4) Menerbitkan (aksi eksplisit):\n   \"Terbitkan draf [judul] sekarang.\"\n\n5) Menelusuri isi situs sendiri (tanpa browsing):\n   \"Telusuri semua artikel dan laman di situs ini dengan\n    dci/search-content + dci/get-content: ada nomor telepon\n    lain selain [nomor default] yang tercantum?\"" ); ?></code></pre>
+			<p style="margin-top:0;"><?php esc_html_e( 'Ganti bagian dalam [kurung siku] sesuai kebutuhan, lalu tempel apa adanya ke AI agent Anda — tidak perlu istilah teknis, agent memilih alat yang tepat sendiri.', 'dci-mcp-bridge' ); ?></p>
+			<p style="background:#f0f6fc;border-left:4px solid #2271b1;padding:10px 14px;border-radius:4px;">
+				<strong><?php esc_html_e( 'Kebiasaan emas: sebutkan nama situsnya.', 'dci-mcp-bridge' ); ?></strong>
+				<?php esc_html_e( 'Kalau aplikasi AI Anda terhubung ke lebih dari satu situs, selalu awali perintah dengan nama situs (contoh di bawah memakai [Djaya Kontainer]) — begitu juga saat menindaklanjuti pembicaraan lama. Kalau hanya satu situs yang terhubung, tidak wajib.', 'dci-mcp-bridge' ); ?>
+			</p>
+			<pre class="dci-snip" style="overflow:auto;padding:14px;background:#1d2327;color:#d4d4d4;border-radius:6px;"><code><?php echo esc_html( "1) Membuat artikel baru (selalu masuk draft dulu):\n   \"Buatkan artikel tentang [topik] untuk situs [Djaya Kontainer],\n    sekitar [800] kata. Pakai data aktual dari internet sebagai\n    referensi, sertakan tautan ke artikel terkait di situs itu.\"\n\n2) Mengaudit dan memperbaiki artikel yang sudah ada:\n   \"Cek artikel [judul artikel] di situs [Djaya Kontainer]:\n    audit SEO-nya, lalu perbaiki semua yang bermasalah.\"\n\n3) Menelusuri isi situs sendiri (tanpa browsing, tidak mungkin salah domain):\n   \"Di situs [Djaya Kontainer], telusuri semua artikel dan halaman:\n    ada nomor telepon lain selain [nomor default]? Sebutkan di artikel mana.\"\n\n4) Pemeriksaan akhir sebelum terbit (memakai kredit Winston):\n   \"Untuk artikel [judul] di [Djaya Kontainer]: periksa dulu apakah\n    terdeteksi AI atau ada plagiarisme. Laporkan skornya.\"\n\n5) Meminta revisi gaya bahasa:\n   \"Bagian pembuka artikel [judul] di [Djaya Kontainer] masih terasa\n    kaku. Tulis ulang biar lebih mengalir seperti orang bicara.\"\n\n6) Menerbitkan (hanya kalau Anda benar-benar yakin):\n   \"Terbitkan artikel [judul] di [Djaya Kontainer] sekarang.\"" ); ?></code></pre>
 			<p class="description" style="margin-bottom:0;">
-				<?php esc_html_e( 'Pemeriksaan integritas memakai kredit Winston AI (per kata). Minta AI menjalankannya sekali di akhir — bukan di setiap revisi — lalu lihat sisa kredit di halaman yang sama pada tab Integritas Konten.', 'dci-mcp-bridge' ); ?>
+				<?php esc_html_e( 'Pola dasarnya selalu sama: SEBUT SITUSNYA → sebut tugasnya → sebatas hasil yang diinginkan (draft atau terbit). Pemeriksaan integritas (nomor 4) memakai kredit Winston AI per kata — mintalah sekali menjelang final, bukan di setiap revisi.', 'dci-mcp-bridge' ); ?>
 			</p>
 		</div>
 

@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.8.0
+Stable tag: 1.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,10 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 1. Halaman DCI Bridge — status integrasi, konfigurasi keamanan, tabel kemampuan, dan panduan koneksi AI agent.
 
 == Changelog ==
+
+= 1.8.1 =
+* Peningkatan: contoh perintah di tab Cara Penggunaan ditulis ulang untuk pengguna awam — bahasa sehari-hari penuh (tanpa istilah teknis ability), 6 contoh mencakup buat/audit/telusuri/cek-integritas/revisi/terbit.
+* Baru: kotak "Kebiasaan emas" — selalu sebut nama situs di perintah saat aplikasi AI terhubung ke lebih dari satu situs (best practice multi-situs), plus pola dasar perintah: sebut situs → tugas → hasil yang diharapkan.
 
 = 1.8.0 =
 * Perbaikan penting (laporan lapangan): AI agent tidak mengenali situs yang dipegangnya dan menebak domain keliru (.com alih-alih .co.id). Dua akar masalah diperbaiki:

@@ -6,6 +6,19 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.8.1] — 2026-10-08
+
+### Berubah
+- Contoh perintah di tab **Cara Penggunaan** ditulis ulang untuk pengguna awam:
+  - Bahasa sehari-hari penuh — tidak lagi menyebut nama ability teknis
+    (`dci/...`); agent memilih alatnya sendiri dari deskripsi kemampuan.
+  - **Best practice multi-situs ditanam di contoh**: setiap perintah menyebut
+    nama situs ([Djaya Kontainer]) — kebiasaan wajib saat aplikasi AI terhubung
+    ke lebih dari satu situs WordPress.
+  - 6 contoh: buat artikel, audit & perbaiki, telusuri isi situs, cek integritas,
+    revisi gaya bahasa, terbitkan — plus kotak "Kebiasaan emas" dan pola dasar
+    perintah (sebut situs → tugas → hasil).
+
 ## [1.8.0] — 2026-10-08
 
 ### Diperbaiki
