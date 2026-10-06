@@ -13,7 +13,7 @@ Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
   - Bahasa sehari-hari penuh — tidak lagi menyebut nama ability teknis
     (`dci/...`); agent memilih alatnya sendiri dari deskripsi kemampuan.
   - **Best practice multi-situs ditanam di contoh**: setiap perintah menyebut
-    nama situs ([Djaya Kontainer]) — kebiasaan wajib saat aplikasi AI terhubung
+    nama situs ([Nama Situs]) — kebiasaan wajib saat aplikasi AI terhubung
     ke lebih dari satu situs WordPress.
   - 6 contoh: buat artikel, audit & perbaiki, telusuri isi situs, cek integritas,
     revisi gaya bahasa, terbitkan — plus kotak "Kebiasaan emas" dan pola dasar
