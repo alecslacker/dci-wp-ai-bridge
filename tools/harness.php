@@ -256,6 +256,13 @@ namespace {
 	$el_plain = dci_mcp_bridge_execute_update_elementor_text( array( 'post_id' => 402, 'find' => 'a', 'replace' => 'b', 'allow_published' => true ) );
 	check( 'T20f non-Elementor → diarahkan ke jalur post_content', is_wp_error( $el_plain ) && 'dci_not_elementor' === $el_plain->get_error_code() );
 
+	/* T21 — meta Rank Math pada PAGE terbit (v2.2.1, regresi) */
+	$GLOBALS['dci_meta'][402] = array();
+	$meta_page = dci_mcp_bridge_execute_set_post_seo_meta( array( 'post_id' => 402, 'meta_title' => 'SEO Halaman Terbit', 'focus_keyword' => 'kontainer kantor', 'allow_published' => true ) );
+	check( 'T21a meta Rank Math page terbit via allow_published', ! is_wp_error( $meta_page ) && in_array( 'rank_math_title', $meta_page['updated'], true ) && in_array( 'rank_math_focus_keyword', $meta_page['updated'], true ) );
+	$meta_page_no = dci_mcp_bridge_execute_set_post_seo_meta( array( 'post_id' => 402, 'meta_title' => 'Tanpa Flag' ) );
+	check( 'T21b page terbit tanpa allow_published → tetap ditolak', is_wp_error( $meta_page_no ) );
+
 	/* T17 — konsistensi UI ↔ registry (anti lupa baris tabel admin) */
 	$table_rows = dci_mcp_bridge_ability_table();
 	$table_names = array();

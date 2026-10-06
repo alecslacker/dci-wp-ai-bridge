@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           2.2.0
+ * Version:           2.2.1
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '2.2.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '2.2.1' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -303,7 +303,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/set-post-seo-meta',
 		array(
 			'label'       => __( 'Set Post SEO Meta (Rank Math)', 'dci-mcp-bridge' ),
-			'description' => __( "Write Rank Math SEO fields on a post: meta_title (ideal 40-60 characters), meta_description (ideal 120-160 characters, include the focus keyword naturally), and focus_keyword. Works on DRAFTS by default; pass allow_published=true to also target a PUBLISHED post (meta only — content is untouched). Meta keys used: rank_math_title, rank_math_description, rank_math_focus_keyword.", 'dci-mcp-bridge' ),
+			'description' => __( "Write Rank Math SEO fields on a post or page: meta_title (ideal 40-60 characters), meta_description (ideal 120-160 characters, include the focus keyword naturally), and focus_keyword. Works on DRAFTS by default; pass allow_published=true to also target PUBLISHED posts AND pages (meta only — content is untouched). Meta keys used: rank_math_title, rank_math_description, rank_math_focus_keyword.", 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -1303,14 +1303,15 @@ function dci_mcp_bridge_execute_set_post_seo_meta( $input = array() ) {
 	$allow_published = ! empty( $input['allow_published'] );
 
 	if ( $allow_published ) {
-		// Mode artikel terbit: hanya meta yang diubah (konten tak disentuh).
+		// Mode konten terbit (post MAUPUN page — v2.2.1): hanya meta yang
+		// diubah, konten tak disentuh.
 		$post_id = absint( $input['post_id'] ?? 0 );
 		$post    = $post_id > 0 ? get_post( $post_id ) : null;
 
-		if ( ! $post || 'post' !== $post->post_type ) {
+		if ( ! $post || ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
 			return new WP_Error(
 				'dci_post_not_found',
-				__( 'Post dengan ID tersebut tidak ditemukan (atau bukan post type "post").', 'dci-mcp-bridge' )
+				__( 'Konten dengan ID tersebut tidak ditemukan (hanya post dan page yang didukung).', 'dci-mcp-bridge' )
 			);
 		}
 	} else {

@@ -6,6 +6,18 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [2.2.1] — 2026-10-08
+
+### Diperbaiki
+- **Meta Rank Math pada halaman terbit masih ditolak** (guard lamen `'post' !== post_type`
+  tertinggal di cabang `allow_published` set-post-seo-meta — lolos dari sweep v2.2.0
+  karena indentasinya berbeda; ditemukan lewat pertanyaan audit Mas Wondho).
+  Kini `allow_published=true` menerima post maupun page (meta saja, konten tak disentuh).
+
+### Pengujian
+- Harness +2 uji regresi (T21: meta page terbit via flag; tanpa flag tetap ditolak)
+  — total **76/76 PASS**.
+
 ## [2.2.0] — 2026-10-08
 
 ### Ditambahkan
