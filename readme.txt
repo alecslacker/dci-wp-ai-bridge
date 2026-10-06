@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.9.0
+Stable tag: 1.9.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,10 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 1. Halaman DCI Bridge — status integrasi, konfigurasi keamanan, tabel kemampuan, dan panduan koneksi AI agent.
 
 == Changelog ==
+
+= 1.9.1 =
+* Perbaikan desain (laporan lapangan: agent terpaksa ambil HTML via REST API karena tidak tersedia di jembatan): `dci/get-content` kini mengembalikan `content_html` — HTML mentah tersimpan termasuk markup blok WordPress — sehingga siklus baca→sunting→tulis penuh (read-modify-write) selesai di satu jalur terkendali, tanpa REST, tanpa risiko kehilangan format.
+* Peningkatan: deskripsi `dci/update-draft-post` & `dci/update-published-post` kini mewajibkan pola aman — ambil content_html dulu, sunting hanya bagian targetnya, kirim ulang dokumen lengkap.
 
 = 1.9.0 =
 * Baru: kemampuan `dci/update-published-post` — memperbaiki artikel yang SUDAH TERBIT lewat AI (laporan lapangan: sebelumnya selalu ditolak). Pengaman: snapshot revisi WordPress dibuat otomatis SEBELUM perubahan (titik pemulihan), capability `edit_published_posts` wajib, dan perubahan langsung live.

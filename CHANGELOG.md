@@ -6,6 +6,23 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.9.1] — 2026-10-08
+
+### Diperbaiki
+- **Celah read-modify-write** (laporan lapangan: agent mengambil HTML asli via REST API
+  karena jembatan tidak menyediakannya). Akar: `dci/get-content` hanya mengembalikan
+  teks polos (lossy), padahal `dci/update-*-post` menuntut HTML penuh → agent yang benar
+  mencari HTML akan keluar dari jalur jembatan.
+- `dci/get-content` kini juga mengembalikan **`content_html`** — HTML mentah tersimpan
+  (termasuk markup blok `<!-- wp:... -->`); lebih setia untuk round-trip daripada
+  `content.rendered` REST.
+- Deskripsi `dci/update-draft-post` & `dci/update-published-post` mewajibkan pola aman:
+  fetch `content_html` → sunting hanya bagian target → kirim ulang dokumen lengkap
+  (jangan pernah menulis ulang artikel dari nol untuk perubahan kecil).
+
+### Pengujian
+- Harness +1 uji (T16a: content_html identik dengan mentah tersimpan) — **52/52 PASS**.
+
 ## [1.9.0] — 2026-10-08
 
 ### Ditambahkan

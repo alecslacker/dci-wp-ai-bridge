@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.9.0
+ * Version:           1.9.1
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.9.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.9.1' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -246,7 +246,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/update-draft-post',
 		array(
 			'label'       => __( 'Update Draft Post', 'dci-mcp-bridge' ),
-			'description' => __( "Update an existing DRAFT post's title, body, and/or excerpt. Works ONLY on drafts (status draft/pending/auto-draft); published or private posts are rejected. Typical flow: audit with dci/audit-article, generate improved content with dci/generate-text, then apply it here.", 'dci-mcp-bridge' ),
+			'description' => __( "Update an existing DRAFT post's title, body, and/or excerpt. Works ONLY on drafts (status draft/pending/auto-draft); published posts are rejected. content_html is a FULL replacement: first fetch content_html via dci/get-content, edit only the target part, then send back the complete document (preserve block markup). Typical flow: audit with dci/audit-article, generate improved content with dci/generate-text, then apply it here.", 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -613,7 +613,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/get-content',
 		array(
 			'label'       => __( 'Get Site Content', 'dci-mcp-bridge' ),
-			'description' => __( 'Fetch the full text of ONE post/page on THIS site by post_id or by its URL (the URL must be on this site). Returns title, url, status, date, and the complete plain-text content — use it with dci/search-content to inspect or verify the site\'s own content (e.g. scanning contact numbers, checking claims) without web browsing.', 'dci-mcp-bridge' ),
+			'description' => __( "Fetch ONE post/page of THIS site by post_id or by its URL (must be on this site). Returns title, url, status, date, plus BOTH content_text (plain text) and content_html (the raw stored HTML including WordPress block markup). For read-modify-write with dci/update-draft-post or dci/update-published-post: take content_html as the base, edit ONLY the target part, and send back the COMPLETE html — preserve block comments and everything you did not intend to change. Do NOT use the REST API for this purpose.", 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -638,8 +638,9 @@ function dci_mcp_bridge_register_abilities() {
 					'url'       => array( 'type' => 'string' ),
 					'date'      => array( 'type' => 'string' ),
 					'content_text' => array( 'type' => 'string' ),
+					'content_html' => array( 'type' => 'string' ),
 				),
-				'required'   => array( 'post_id', 'title', 'content_text' ),
+				'required'   => array( 'post_id', 'title', 'content_text', 'content_html' ),
 			),
 			'execute_callback'    => 'dci_mcp_bridge_execute_get_content',
 			'permission_callback' => 'dci_mcp_bridge_permission_read',
@@ -665,7 +666,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/update-published-post',
 		array(
 			'label'       => __( 'Update Published Post', 'dci-mcp-bridge' ),
-			'description' => __( "Update a PUBLISHED post's title/body/excerpt. Changes go LIVE immediately, but a WordPress revision snapshot is saved first as a restore point (requires the edit_published_posts capability). For drafts, use dci/update-draft-post instead. Best practice: change one section at a time and verify after each.", 'dci-mcp-bridge' ),
+			'description' => __( "Update a PUBLISHED post's title/body/excerpt. Changes go LIVE immediately, but a WordPress revision snapshot is saved first as a restore point (requires the edit_published_posts capability). For drafts, use dci/update-draft-post instead. content_html is a FULL replacement: fetch content_html via dci/get-content FIRST, edit only the target part, then send back the complete document (preserve block markup) — never rewrite the article from scratch. Change one section at a time and verify after each.", 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -2039,6 +2040,8 @@ function dci_mcp_bridge_execute_get_content( $input = array() ) {
 		'date'         => (string) $post->post_date,
 		'excerpt'      => wp_trim_words( $content_text, 30 ),
 		'content_text' => $content_text,
+		// HTML mentah tersimpan (termasuk markup blok) — basis read-modify-write.
+		'content_html' => (string) $post->post_content,
 	);
 }
 
