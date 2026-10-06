@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.7.0
+ * Version:           1.8.0
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.7.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.8.0' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -31,6 +31,38 @@ define( 'DCI_MCP_BRIDGE_VERSION', '1.7.0' );
  *   define( 'DCI_MCP_MIN_CAPABILITY', 'manage_options' );
  * ============================================================ */
 add_filter( 'mcp_adapter_default_transport_permission_user_capability', 'dci_mcp_bridge_transport_capability', 10, 2 );
+
+/**
+ * Suntikkan identitas situs ke server MCP default.
+ *
+ * Field "instructions" pada handshake MCP diambil dari server_description
+ * (InitializeHandler.php milik MCP Adapter), sehingga setiap AI client yang
+ * terhubung otomatis tahu situs mana yang dipegang — termasuk domain resmi
+ * yang tidak boleh diganti (mis. .co.id ≠ .com).
+ *
+ * @param array $config Konfigurasi default server dari MCP Adapter.
+ * @return array
+ */
+function dci_mcp_bridge_server_identity( $config ) {
+	if ( ! is_array( $config ) ) {
+		$config = array();
+	}
+
+	$site_name = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
+	$site_url  = home_url();
+	$site_host = (string) wp_parse_url( $site_url, PHP_URL_HOST );
+
+	$config['server_name']        = $site_name . ' — WordPress MCP';
+	$config['server_description'] = sprintf(
+		'All abilities on this MCP server operate on the WordPress site "%1$s" (%2$s). The official domain is %3$s — always use this exact domain when referencing or verifying this site; NEVER substitute it (e.g. do not change .co.id to .com or guess similar domains). To read this site\'s own content (posts/pages), use dci/search-content and dci/get-content instead of web browsing.',
+		$site_name,
+		$site_url,
+		$site_host
+	);
+
+	return $config;
+}
+add_filter( 'mcp_adapter_default_server_config', 'dci_mcp_bridge_server_identity' );
 
 /**
  * Naikkan kemampuan minimum gerbang MCP HTTP.
@@ -509,6 +541,114 @@ function dci_mcp_bridge_register_abilities() {
 			),
 		)
 	);
+
+	/* --------------------------------------------------------
+	 * Ability 9: dci/search-content
+	 * Mencari/mendaftar artikel & laman milik situs ini.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/search-content',
+		array(
+			'label'       => __( 'Search Site Content', 'dci-mcp-bridge' ),
+			'description' => __( 'Search or list THIS site\'s posts and pages (not the web). Leave "query" empty to list the newest content. Use this — not web browsing — whenever you need to inspect, verify, or cite the site\'s own articles and pages. Returns id, type, status, title, url, date, and a short excerpt per item; then fetch full text with dci/get-content.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'query'      => array(
+						'type'        => 'string',
+						'description' => __( 'Optional. Search keyword; empty = list newest.', 'dci-mcp-bridge' ),
+					),
+					'post_types' => array(
+						'type'    => 'array',
+						'items'   => array( 'type' => 'string' ),
+						'default' => array( 'post', 'page' ),
+						'description' => __( 'Optional. Post types to search (default: post, page).', 'dci-mcp-bridge' ),
+					),
+					'per_page'   => array(
+						'type'        => 'integer',
+						'default'     => 20,
+						'description' => __( 'Optional. Results per page (1-50).', 'dci-mcp-bridge' ),
+					),
+					'page'       => array(
+						'type'        => 'integer',
+						'default'     => 1,
+						'description' => __( 'Optional. Page number for pagination.', 'dci-mcp-bridge' ),
+					),
+				),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array(
+					'query' => array( 'type' => 'string' ),
+					'page'  => array( 'type' => 'integer' ),
+					'items' => array( 'type' => 'array', 'items' => array( 'type' => 'object' ) ),
+				),
+				'required'   => array( 'items' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_search_content',
+			'permission_callback' => 'dci_mcp_bridge_permission_read',
+			'meta'                => array(
+				'annotations' => array(
+					'readonly'    => true,
+					'destructive' => false,
+					'idempotent'  => true,
+				),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
+
+	/* --------------------------------------------------------
+	 * Ability 10: dci/get-content
+	 * Mengambil isi penuh satu artikel/laman milik situs ini.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/get-content',
+		array(
+			'label'       => __( 'Get Site Content', 'dci-mcp-bridge' ),
+			'description' => __( 'Fetch the full text of ONE post/page on THIS site by post_id or by its URL (the URL must be on this site). Returns title, url, status, date, and the complete plain-text content — use it with dci/search-content to inspect or verify the site\'s own content (e.g. scanning contact numbers, checking claims) without web browsing.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id' => array(
+						'type'        => 'integer',
+						'description' => __( 'Post ID on this site.', 'dci-mcp-bridge' ),
+					),
+					'url'     => array(
+						'type'        => 'string',
+						'description' => __( 'Optional. URL of the post/page on this site (alternative to post_id).', 'dci-mcp-bridge' ),
+					),
+				),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id'   => array( 'type' => 'integer' ),
+					'type'      => array( 'type' => 'string' ),
+					'status'    => array( 'type' => 'string' ),
+					'title'     => array( 'type' => 'string' ),
+					'url'       => array( 'type' => 'string' ),
+					'date'      => array( 'type' => 'string' ),
+					'content_text' => array( 'type' => 'string' ),
+				),
+				'required'   => array( 'post_id', 'title', 'content_text' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_get_content',
+			'permission_callback' => 'dci_mcp_bridge_permission_read',
+			'meta'                => array(
+				'annotations' => array(
+					'readonly'    => true,
+					'destructive' => false,
+					'idempotent'  => true,
+				),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
 }
 
 /* ============================================================
@@ -627,6 +767,26 @@ function dci_mcp_bridge_permission_publish_posts( $input = null ) {
 		return new WP_Error(
 			'dci_forbidden_publish',
 			__( 'Hanya pengguna dengan kemampuan publish_posts (Editor/Administrator) yang dapat menerbitkan artikel.', 'dci-mcp-bridge' ),
+			array( 'status' => 403 )
+		);
+	}
+
+	return true;
+}
+
+/**
+ * Izin minimal untuk kemampuan baca konten: user ter-login.
+ *
+ * @param mixed $input Argumen ability (tidak dipakai di sini).
+ * @return bool|WP_Error
+ */
+function dci_mcp_bridge_permission_read( $input = null ) {
+	unset( $input );
+
+	if ( ! current_user_can( 'read' ) ) {
+		return new WP_Error(
+			'dci_forbidden',
+			__( 'Anda tidak berwenang membaca konten situs ini.', 'dci-mcp-bridge' ),
 			array( 'status' => 403 )
 		);
 	}
@@ -1593,6 +1753,109 @@ function dci_mcp_bridge_aipkit_generate( array $args ) {
 	);
 }
 
+/**
+ * Eksekusi ability dci/search-content: cari/daftar konten situs ini.
+ *
+ * @param array $input Argumen ability.
+ * @return array|WP_Error
+ */
+function dci_mcp_bridge_execute_search_content( $input = array() ) {
+	$input = is_array( $input ) ? $input : array();
+
+	$query = isset( $input['query'] ) ? trim( (string) $input['query'] ) : '';
+
+	$types = ( isset( $input['post_types'] ) && is_array( $input['post_types'] ) )
+		? array_values( array_filter( array_map( 'sanitize_key', array_map( 'strval', $input['post_types'] ) ) ) )
+		: array();
+
+	if ( empty( $types ) ) {
+		$types = array( 'post', 'page' );
+	}
+
+	$per_page = min( 50, max( 1, absint( $input['per_page'] ?? 20 ) ) );
+	$paged    = max( 1, absint( $input['page'] ?? 1 ) );
+
+	$args = array(
+		'post_type'           => $types,
+		'post_status'         => array( 'publish', 'draft', 'pending', 'private', 'future' ),
+		'posts_per_page'      => $per_page,
+		'paged'               => $paged,
+		'orderby'             => 'date',
+		'order'               => 'DESC',
+		'ignore_sticky_posts' => true,
+	);
+
+	if ( '' !== $query ) {
+		$args['s'] = $query;
+	}
+
+	$posts = get_posts( $args );
+
+	if ( ! is_array( $posts ) ) {
+		$posts = array();
+	}
+
+	$items = array();
+
+	foreach ( $posts as $post_item ) {
+		$source = ( ! empty( $post_item->post_excerpt ) ) ? $post_item->post_excerpt : $post_item->post_content;
+
+		$items[] = array(
+			'id'      => (int) $post_item->ID,
+			'type'    => (string) $post_item->post_type,
+			'status'  => (string) $post_item->post_status,
+			'title'   => (string) $post_item->post_title,
+			'url'     => (string) get_permalink( $post_item->ID ),
+			'date'    => (string) $post_item->post_date,
+			'excerpt' => wp_trim_words( wp_strip_all_tags( (string) $source ), 30 ),
+		);
+	}
+
+	return array(
+		'query' => $query,
+		'page'  => $paged,
+		'items' => $items,
+	);
+}
+
+/**
+ * Eksekusi ability dci/get-content: ambil isi penuh satu konten.
+ *
+ * @param array $input Argumen ability.
+ * @return array|WP_Error
+ */
+function dci_mcp_bridge_execute_get_content( $input = array() ) {
+	$input = is_array( $input ) ? $input : array();
+
+	$post_id = absint( $input['post_id'] ?? 0 );
+
+	if ( 0 === $post_id && ! empty( $input['url'] ) && is_string( $input['url'] ) ) {
+		$post_id = url_to_postid( esc_url_raw( trim( $input['url'] ) ) );
+	}
+
+	$post = $post_id > 0 ? get_post( $post_id ) : null;
+
+	if ( ! $post ) {
+		return new WP_Error(
+			'dci_post_not_found',
+			__( 'Konten tidak ditemukan di situs ini. Berikan post_id atau URL yang valid pada domain situs ini.', 'dci-mcp-bridge' )
+		);
+	}
+
+	$content_text = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( (string) $post->post_content ) ) );
+
+	return array(
+		'post_id'      => (int) $post->ID,
+		'type'         => (string) $post->post_type,
+		'status'       => (string) $post->post_status,
+		'title'        => (string) $post->post_title,
+		'url'          => (string) get_permalink( $post->ID ),
+		'date'         => (string) $post->post_date,
+		'excerpt'      => wp_trim_words( $content_text, 30 ),
+		'content_text' => $content_text,
+	);
+}
+
 /* ============================================================
  * BAGIAN 4D — INTEGRITAS KONTEN (WINSTON AI)
  * Kontrak API diverifikasi dari docs.gowinston.ai (v2, sinkron):
@@ -2201,6 +2464,8 @@ function dci_mcp_bridge_ability_table() {
 		array( 'name' => 'dci/publish-post', 'label' => __( 'Publish Draft Post', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — aksi eksplisit', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/get-seo-config', 'label' => __( 'Get Rank Math SEO Config', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/check-originality', 'label' => __( 'Check Originality (AI + Plagiarism)', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca — berbiaya kredit', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/search-content', 'label' => __( 'Search Site Content', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/get-content', 'label' => __( 'Get Site Content', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
 	);
 }
 
@@ -2553,9 +2818,26 @@ function dci_mcp_bridge_render_admin_page() {
 		<div class="dci-card">
 			<h2><span class="dashicons dashicons-format-chat"></span> <?php esc_html_e( 'Contoh Perintah (tinggal salin ke AI agent Anda)', 'dci-mcp-bridge' ); ?></h2>
 			<p style="margin-top:0;"><?php esc_html_e( 'Ganti bagian dalam kurung sesuai kebutuhan. Semua perintah memakai kemampuan plugin ini secara otomatis:', 'dci-mcp-bridge' ); ?></p>
-			<pre class="dci-snip" style="overflow:auto;padding:14px;background:#1d2327;color:#d4d4d4;border-radius:6px;"><code><?php echo esc_html( "1) Membuat artikel baru (masuk draft):\n   \"Buatkan artikel tentang [topik/kata kunci] untuk situs ini,\n    sekitar [800] kata, masuk draft dulu. Pakai data aktual\n    sebagai referensi dan sertakan tautan internal ke artikel terkait.\"\n\n2) Mengaudit dan memperbaiki artikel:\n   \"Audit artikel berjudul [judul] dengan dci/audit-article,\n    lalu perbaiki semua temuan WARN/FAIL ke draft-nya.\"\n\n3) Pemeriksaan integritas menjelang final (berbiaya kredit):\n   \"Jalankan dci/check-originality pada artikel [judul],\n    bahasa id. Laporkan skor dan bagian yang perlu ditulis ulang.\"\n\n4) Menerbitkan (aksi eksplisit):\n   \"Terbitkan draf [judul] sekarang.\"" ); ?></code></pre>
+			<pre class="dci-snip" style="overflow:auto;padding:14px;background:#1d2327;color:#d4d4d4;border-radius:6px;"><code><?php echo esc_html( "1) Membuat artikel baru (masuk draft):\n   \"Buatkan artikel tentang [topik/kata kunci] untuk situs ini,\n    sekitar [800] kata, masuk draft dulu. Pakai data aktual\n    sebagai referensi dan sertakan tautan internal ke artikel terkait.\"\n\n2) Mengaudit dan memperbaiki artikel:\n   \"Audit artikel berjudul [judul] dengan dci/audit-article,\n    lalu perbaiki semua temuan WARN/FAIL ke draft-nya.\"\n\n3) Pemeriksaan integritas menjelang final (berbiaya kredit):\n   \"Jalankan dci/check-originality pada artikel [judul],\n    bahasa id. Laporkan skor dan bagian yang perlu ditulis ulang.\"\n\n4) Menerbitkan (aksi eksplisit):\n   \"Terbitkan draf [judul] sekarang.\"\n\n5) Menelusuri isi situs sendiri (tanpa browsing):\n   \"Telusuri semua artikel dan laman di situs ini dengan\n    dci/search-content + dci/get-content: ada nomor telepon\n    lain selain [nomor default] yang tercantum?\"" ); ?></code></pre>
 			<p class="description" style="margin-bottom:0;">
 				<?php esc_html_e( 'Pemeriksaan integritas memakai kredit Winston AI (per kata). Minta AI menjalankannya sekali di akhir — bukan di setiap revisi — lalu lihat sisa kredit di halaman yang sama pada tab Integritas Konten.', 'dci-mcp-bridge' ); ?>
+			</p>
+		</div>
+
+		<div class="dci-card">
+			<h2><span class="dashicons dashicons-location-alt"></span> <?php esc_html_e( 'Bagaimana AI Mengenali Situs Ini?', 'dci-mcp-bridge' ); ?></h2>
+			<p style="margin-top:0;">
+				<?php
+				printf(
+					/* translators: %s: nama server MCP. */
+					esc_html__( 'Setiap AI client yang terhubung otomatis menerima identitas situs ini (nama, URL, dan domain resmi %1$s) saat handshake — termasuk peringatan agar tidak mengganti domain (mis. .co.id menjadi .com). Nama server yang tercantum di aplikasi AI Anda: %2$s (lihat tab Koneksi AI Agent untuk menggantinya).', 'dci-mcp-bridge' ),
+					'<code class="dci-code">' . esc_html( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ) . '</code>',
+					'<code class="dci-code">' . esc_html( $mcp_name ) . '</code>'
+				);
+				?>
+			</p>
+			<p class="description" style="margin-bottom:0;">
+				<?php esc_html_e( 'Untuk tugas yang menyangkut isi situs sendiri, mintalah AI memakai dci/search-content dan dci/get-content (membaca database langsung) — bukan browsing — sehingga tidak mungkin salah domain. Menyebut domain di prompt juga tetap membantu: "…pada situs www.djayakontainer.co.id".', 'dci-mcp-bridge' ); ?>
 			</p>
 		</div>
 		<?php endif; ?>

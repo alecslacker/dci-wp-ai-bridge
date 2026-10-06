@@ -6,6 +6,30 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.8.0] — 2026-10-08
+
+### Diperbaiki
+- **AI agent salah mengenali domain situs** (laporan lapangan: agent browsing ke
+  djayakontainer.com padahal situs .co.id). Akar ganda, keduanya diperbaiki:
+  1. Agent tidak pernah diberi konteks identitas situs → kini `instructions`
+     handshake berisi nama situs, URL, domain resmi, dan larangan eksplisit
+     mensubstitusi domain (via filter `mcp_adapter_default_server_config`;
+     `instructions` = server_description, terverifikasi InitializeHandler.php:67).
+  2. Tidak ada kemampuan membaca isi situs → agent terpaksa browsing.
+
+### Ditambahkan
+- `dci/search-content` — cari/daftar post & page milik situs (kata kunci opsional,
+  filter post type, paginasi 1-50; status publish/draft/pending/private/future).
+- `dci/get-content` — teks penuh satu konten via post_id atau URL domain situs
+  (url_to_postid).
+- Kedua ability baca berizin minimal `read`.
+- Tab Panduan: bagian "Bagaimana AI Mengenali Situs Ini?" + contoh perintah #5
+  (menelusuri isi situs sendiri tanpa browsing, mis. memindai nomor telepon).
+
+### Pengujian
+- Harness +7 uji (T13-T14: search/get-content, URL→post, error, identitas server)
+  — total **47/47 PASS**.
+
 ## [1.7.0] — 2026-10-07
 
 ### Ditambahkan
