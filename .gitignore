@@ -1,0 +1,8 @@
+# Artefak build & OS
+*.zip
+.DS_Store
+Thumbs.db
+
+# Internal tooling & lingkungan
+.mimosa/
+.env
