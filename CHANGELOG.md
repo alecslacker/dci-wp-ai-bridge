@@ -6,6 +6,21 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.7.0] — 2026-10-07
+
+### Ditambahkan
+- **Navigasi 5 tab** di halaman DCI Bridge (kelas nav-tab native WordPress):
+  Status · Integritas Konten · Koneksi AI Agent · **Cara Penggunaan** · **Tentang**.
+- **Tab Cara Penggunaan**: alur kerja standar 8 langkah + 4 contoh perintah siap-salin
+  (buat artikel, audit & perbaiki, cek integritas, terbitkan) + catatan biaya kredit.
+- **Tab Tentang**: versi, filosofi desain, pengembang, tautan repo GitHub, lisensi,
+  dependensi, dan transparansi layanan pihak ketiga (Winston AI).
+- **Snippet koneksi FreeBuff / Codebuff** (klien ke-11) — hasil riset dokumentasi
+  resmi: file `.agents/mcp.json` (proyek) atau `~/.agents/mcp.json` (global);
+  skema `mcpServers` → `type: "http"|"sse"` + `url` + `headers`; file config belakangan
+  pada jalur pencarian menimpa yang awal; mendukung rujukan env `$VAR`.
+- Redirect setelah simpan API key kembali ke tab Integritas Konten.
+
 ## [1.6.1] — 2026-10-07
 
 ### Diperbaiki

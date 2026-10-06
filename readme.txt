@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.6.1
+Stable tag: 1.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,10 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 1. Halaman DCI Bridge — status integrasi, konfigurasi keamanan, tabel kemampuan, dan panduan koneksi AI agent.
 
 == Changelog ==
+
+= 1.7.0 =
+* Baru: halaman admin diorganisasi ke dalam **5 tab native WordPress** — Status, Integritas Konten, Koneksi AI Agent, **Cara Penggunaan** (alur kerja 8 langkah + contoh perintah siap-salin), dan **Tentang** (pengembang, kode sumber, lisensi, dependensi, layanan pihak ketiga).
+* Baru: potongan koneksi untuk **FreeBuff / Codebuff** (klien ke-11) — file `.agents/mcp.json` (proyek) atau `~/.agents/mcp.json` (global), format terverifikasi dari dokumentasi resmi Codebuff (type http + url + headers, mendukung rujukan variabel lingkungan $VAR).
 
 = 1.6.1 =
 * Perbaikan penting (laporan lapangan): kartu AI Puffer tetap salah deteksi meski provider sudah aktif — kunci API provider ternyata tersimpan di `aipkit_options['providers']` (bukan `['api_keys']` yang hanya memuat Public API; terverifikasi dari `classes/ai/settings.php` plugin AI Puffer). Deteksi kini membaca cabang yang benar, memakai aksesor resmi `get_all_providers()` bila tersedia.

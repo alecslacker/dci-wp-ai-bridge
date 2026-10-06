@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.6.1
+ * Version:           1.7.0
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.6.1' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.7.0' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -2113,6 +2113,7 @@ function dci_mcp_bridge_handle_save_key() {
 		add_query_arg(
 			array(
 				'page'      => 'dci-mcp-bridge',
+				'tab'       => 'integritas',
 				'dci-saved' => '1',
 			),
 			admin_url( 'admin.php' )
@@ -2257,6 +2258,23 @@ function dci_mcp_bridge_render_admin_page() {
 	 * Override manual: define( 'DCI_MCP_SERVER_NAME', 'nama-lain' ); */
 	$mcp_name = dci_mcp_bridge_server_name();
 
+	/* Navigasi tab — pakai kelas native WordPress (nav-tab) agar konsisten
+	 * dengan tampilan admin inti; tab aktif dari parameter ?tab=. */
+	$current_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'status';
+	$tabs        = array(
+		'status'     => __( 'Status', 'dci-mcp-bridge' ),
+		'integritas' => __( 'Integritas Konten', 'dci-mcp-bridge' ),
+		'koneksi'    => __( 'Koneksi AI Agent', 'dci-mcp-bridge' ),
+		'panduan'    => __( 'Cara Penggunaan', 'dci-mcp-bridge' ),
+		'tentang'    => __( 'Tentang', 'dci-mcp-bridge' ),
+	);
+
+	if ( ! isset( $tabs[ $current_tab ] ) ) {
+		$current_tab = 'status';
+	}
+
+	$page_base = admin_url( 'admin.php?page=dci-mcp-bridge' );
+
 	/* Potongan konfigurasi per klien — format dari dokumentasi resmi masing-masing.
 	 * __BASIC_AUTH__ = placeholder yang diisi JavaScript di browser
 	 * (base64 dari user:application-password, tidak pernah dikirim ke server). */
@@ -2307,6 +2325,11 @@ function dci_mcp_bridge_render_admin_page() {
 			'lokasi' => __( '~/.zcode/cli/config.json — di dalam objek "mcp" → "servers"', 'dci-mcp-bridge' ),
 			'code' => "{\n  \"mcp\": {\n    \"servers\": {\n      \"{$mcp_name}\": {\n        \"type\": \"http\",\n        \"url\": \"{$endpoint_url}\",\n        \"headers\": {\n          \"Authorization\": \"Basic {$token}\"\n        }\n      }\n    }\n  }\n}",
 		),
+		'freebuff' => array(
+			'label' => __( 'FreeBuff / Codebuff', 'dci-mcp-bridge' ),
+			'lokasi' => __( '.agents/mcp.json (proyek) atau ~/.agents/mcp.json (global) — mendukung rujukan env $VAR', 'dci-mcp-bridge' ),
+			'code' => "{\n  \"mcpServers\": {\n    \"{$mcp_name}\": {\n      \"type\": \"http\",\n      \"url\": \"{$endpoint_url}\",\n      \"headers\": {\n        \"Authorization\": \"Basic {$token}\"\n      }\n    }\n  }\n}",
+		),
 		'custom' => array(
 			'label' => __( 'Klien Lain (Custom)', 'dci-mcp-bridge' ),
 			'lokasi' => __( 'Pola standar mcpServers — sesuaikan lokasi file dengan klien Anda', 'dci-mcp-bridge' ),
@@ -2346,6 +2369,13 @@ function dci_mcp_bridge_render_admin_page() {
 		</h1>
 		<p class="dci-sub"><?php esc_html_e( 'Jembatan AI profesional untuk WordPress — produksi konten SEO end-to-end: riset, tulis, audit, set meta Rank Math, lalu terbit atau simpan sebagai draf.', 'dci-mcp-bridge' ); ?></p>
 
+		<nav class="nav-tab-wrapper" style="margin-bottom:4px;">
+			<?php foreach ( $tabs as $tab_key => $tab_label ) : ?>
+				<a href="<?php echo esc_url( add_query_arg( 'tab', $tab_key, $page_base ) ); ?>" class="nav-tab<?php echo $tab_key === $current_tab ? ' nav-tab-active' : ''; ?>"><?php echo esc_html( $tab_label ); ?></a>
+			<?php endforeach; ?>
+		</nav>
+
+		<?php if ( 'status' === $current_tab ) : ?>
 		<div class="dci-card">
 			<h2><span class="dashicons dashicons-heart"></span> <?php esc_html_e( 'Status Integrasi', 'dci-mcp-bridge' ); ?></h2>
 			<div class="dci-grid">
@@ -2408,7 +2438,9 @@ function dci_mcp_bridge_render_admin_page() {
 				</tbody>
 			</table>
 		</div>
+		<?php endif; ?>
 
+		<?php if ( 'integritas' === $current_tab ) : ?>
 		<div class="dci-card">
 			<h2><span class="dashicons dashicons-shield-alt"></span> <?php esc_html_e( 'Integritas Konten (AI Detector + Plagiarism)', 'dci-mcp-bridge' ); ?></h2>
 			<?php if ( $saved_notice ) : ?>
@@ -2449,7 +2481,9 @@ function dci_mcp_bridge_render_admin_page() {
 				<?php submit_button( __( 'Simpan API Key', 'dci-mcp-bridge' ), 'primary', 'submit', true ); ?>
 			</form>
 		</div>
+		<?php endif; ?>
 
+		<?php if ( 'koneksi' === $current_tab ) : ?>
 		<div class="dci-card">
 			<h2><span class="dashicons dashicons-admin-links"></span> <?php esc_html_e( 'Menghubungkan AI Agent', 'dci-mcp-bridge' ); ?></h2>
 			<p style="margin-top:0;"><?php esc_html_e( 'Endpoint MCP server (protokol streamable HTTP, revisi 2025-11-25 / 2026-07-28):', 'dci-mcp-bridge' ); ?></p>
@@ -2498,6 +2532,53 @@ function dci_mcp_bridge_render_admin_page() {
 				<?php esc_html_e( 'Keamanan: header Authorization ini setara username + Application Password — jangan pernah dibagikan atau di-commit ke repo. Gunakan Application Password khusus (bukan password utama) dan cabut bila tidak dipakai.', 'dci-mcp-bridge' ); ?>
 			</p>
 		</div>
+		<?php endif; ?>
+
+		<?php if ( 'panduan' === $current_tab ) : ?>
+		<div class="dci-card">
+			<h2><span class="dashicons dashicons-book"></span> <?php esc_html_e( 'Alur Kerja Standar', 'dci-mcp-bridge' ); ?></h2>
+			<p style="margin-top:0;"><?php esc_html_e( 'Plugin ini adalah "tangan"; AI agent adalah "otak". Anda cukup memberi perintah dalam bahasa sehari-hari — AI menjalankan seluruh tahap di bawah ini secara otomatis:', 'dci-mcp-bridge' ); ?></p>
+			<ol>
+				<li><?php esc_html_e( 'Membaca setelan SEO situs ini (Rank Math) agar konten selaras sejak awal.', 'dci-mcp-bridge' ); ?></li>
+				<li><?php esc_html_e( 'Mencari data/sumber nyata di internet sebagai referensi (klaim angka wajib bersumber).', 'dci-mcp-bridge' ); ?></li>
+				<li><?php esc_html_e( 'Menulis artikel: answer-first, hierarki heading, tautan internal, bebas frasa klise AI.', 'dci-mcp-bridge' ); ?></li>
+				<li><?php esc_html_e( 'Menyimpan sebagai DRAF — tidak pernah langsung terbit.', 'dci-mcp-bridge' ); ?></li>
+				<li><?php esc_html_e( 'Audit 14 pemeriksaan on-page; gagal → diperbaiki → audit ulang sampai bersih.', 'dci-mcp-bridge' ); ?></li>
+				<li><?php esc_html_e( 'Mengisi meta SEO Rank Math (judul, deskripsi, kata kunci, OG, robots).', 'dci-mcp-bridge' ); ?></li>
+				<li><?php esc_html_e( 'Pemeriksaan integritas sekali menjelang final (deteksi AI + plagiarisme — berbiaya kredit Winston).', 'dci-mcp-bridge' ); ?></li>
+				<li><?php esc_html_e( 'Terbit hanya atas perintah eksplisit Anda — atau tetap draf untuk ditinjau manual.', 'dci-mcp-bridge' ); ?></li>
+			</ol>
+		</div>
+
+		<div class="dci-card">
+			<h2><span class="dashicons dashicons-format-chat"></span> <?php esc_html_e( 'Contoh Perintah (tinggal salin ke AI agent Anda)', 'dci-mcp-bridge' ); ?></h2>
+			<p style="margin-top:0;"><?php esc_html_e( 'Ganti bagian dalam kurung sesuai kebutuhan. Semua perintah memakai kemampuan plugin ini secara otomatis:', 'dci-mcp-bridge' ); ?></p>
+			<pre class="dci-snip" style="overflow:auto;padding:14px;background:#1d2327;color:#d4d4d4;border-radius:6px;"><code><?php echo esc_html( "1) Membuat artikel baru (masuk draft):\n   \"Buatkan artikel tentang [topik/kata kunci] untuk situs ini,\n    sekitar [800] kata, masuk draft dulu. Pakai data aktual\n    sebagai referensi dan sertakan tautan internal ke artikel terkait.\"\n\n2) Mengaudit dan memperbaiki artikel:\n   \"Audit artikel berjudul [judul] dengan dci/audit-article,\n    lalu perbaiki semua temuan WARN/FAIL ke draft-nya.\"\n\n3) Pemeriksaan integritas menjelang final (berbiaya kredit):\n   \"Jalankan dci/check-originality pada artikel [judul],\n    bahasa id. Laporkan skor dan bagian yang perlu ditulis ulang.\"\n\n4) Menerbitkan (aksi eksplisit):\n   \"Terbitkan draf [judul] sekarang.\"" ); ?></code></pre>
+			<p class="description" style="margin-bottom:0;">
+				<?php esc_html_e( 'Pemeriksaan integritas memakai kredit Winston AI (per kata). Minta AI menjalankannya sekali di akhir — bukan di setiap revisi — lalu lihat sisa kredit di halaman yang sama pada tab Integritas Konten.', 'dci-mcp-bridge' ); ?>
+			</p>
+		</div>
+		<?php endif; ?>
+
+		<?php if ( 'tentang' === $current_tab ) : ?>
+		<div class="dci-card">
+			<h2><span class="dashicons dashicons-info"></span> <?php esc_html_e( 'Tentang DCI MCP Bridge', 'dci-mcp-bridge' ); ?></h2>
+			<p style="margin-top:0;">
+				<strong>DCI MCP Bridge v<?php echo esc_html( DCI_MCP_BRIDGE_VERSION ); ?></strong> —
+				<?php esc_html_e( 'plugin pendamping MCP Adapter resmi WordPress. Ia mengamankan gerbang MCP situs ini dan mengekspos 8 kemampuan produksi konten SEO (generate, buat/perbaiki draf, set meta Rank Math, audit on-page, deteksi AI + plagiarisme, terbit, baca konfigurasi SEO) melalui Abilities API WordPress 6.9+.', 'dci-mcp-bridge' ); ?>
+			</p>
+			<p><?php esc_html_e( 'Prinsip desain: plugin adalah tangan, AI agent adalah otak. Setiap penulisan konten selalu berhenti di draf; penerbitan adalah aksi eksplisit terpisah; kredensial tidak pernah bocor ke AI.', 'dci-mcp-bridge' ); ?></p>
+			<table>
+				<tbody>
+					<tr><th scope="row" style="width:180px;"><?php esc_html_e( 'Pengembang', 'dci-mcp-bridge' ); ?></th><td><?php esc_html_e( 'Mas Wondho — Duta Corpora Indonesia', 'dci-mcp-bridge' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Kode sumber', 'dci-mcp-bridge' ); ?></th><td><a href="https://github.com/alecslacker/dci-wp-ai-bridge" target="_blank" rel="noopener noreferrer">github.com/alecslacker/dci-wp-ai-bridge</a></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Lisensi', 'dci-mcp-bridge' ); ?></th><td><?php esc_html_e( 'GPL-2.0-or-later (standar plugin WordPress)', 'dci-mcp-bridge' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Dependensi', 'dci-mcp-bridge' ); ?></th><td><?php esc_html_e( 'MCP Adapter (wajib), WordPress 6.9+, PHP 7.4+. Opsional: AI Puffer (generate), Rank Math (meta SEO), Winston AI (integritas).', 'dci-mcp-bridge' ); ?></td></tr>
+					<tr><th scope="row"><?php esc_html_e( 'Layanan pihak ketiga', 'dci-mcp-bridge' ); ?></th><td><?php esc_html_e( 'Winston AI (deteksi AI & plagiarisme) — teks dikirim hanya saat pemeriksaan integritas dijalankan, atas permintaan eksplisit.', 'dci-mcp-bridge' ); ?></td></tr>
+				</tbody>
+			</table>
+		</div>
+		<?php endif; ?>
 
 		<p class="dci-footer">
 			<?php
