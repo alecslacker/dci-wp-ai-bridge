@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           1.8.1
+ * Version:           1.9.0
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '1.8.1' );
+define( 'DCI_MCP_BRIDGE_VERSION', '1.9.0' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -303,7 +303,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/set-post-seo-meta',
 		array(
 			'label'       => __( 'Set Post SEO Meta (Rank Math)', 'dci-mcp-bridge' ),
-			'description' => __( "Write Rank Math SEO fields on a DRAFT post: meta_title (ideal 40-60 characters), meta_description (ideal 120-160 characters, include the focus keyword naturally), and focus_keyword. Works ONLY on drafts (draft/pending/auto-draft). Meta keys used: rank_math_title, rank_math_description, rank_math_focus_keyword.", 'dci-mcp-bridge' ),
+			'description' => __( "Write Rank Math SEO fields on a post: meta_title (ideal 40-60 characters), meta_description (ideal 120-160 characters, include the focus keyword naturally), and focus_keyword. Works on DRAFTS by default; pass allow_published=true to also target a PUBLISHED post (meta only — content is untouched). Meta keys used: rank_math_title, rank_math_description, rank_math_focus_keyword.", 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -311,6 +311,11 @@ function dci_mcp_bridge_register_abilities() {
 					'post_id'          => array(
 						'type'        => 'integer',
 						'description' => __( 'ID of the draft post.', 'dci-mcp-bridge' ),
+					),
+					'allow_published'  => array(
+						'type'        => 'boolean',
+						'default'     => false,
+						'description' => __( 'Optional. Set true to also allow targeting a PUBLISHED post (meta only).', 'dci-mcp-bridge' ),
 					),
 					'meta_title'       => array(
 						'type'        => 'string',
@@ -649,6 +654,66 @@ function dci_mcp_bridge_register_abilities() {
 			),
 		)
 	);
+
+	/* --------------------------------------------------------
+	 * Ability 11: dci/update-published-post
+	 * Memperbaiki artikel yang SUDAH TERBIT — perubahan langsung
+	 * live, tapi snapshot revisi WordPress dibuat otomatis lebih dulu
+	 * sebagai titik pemulihan.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/update-published-post',
+		array(
+			'label'       => __( 'Update Published Post', 'dci-mcp-bridge' ),
+			'description' => __( "Update a PUBLISHED post's title/body/excerpt. Changes go LIVE immediately, but a WordPress revision snapshot is saved first as a restore point (requires the edit_published_posts capability). For drafts, use dci/update-draft-post instead. Best practice: change one section at a time and verify after each.", 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id'      => array(
+						'type'        => 'integer',
+						'description' => __( 'ID of the published post.', 'dci-mcp-bridge' ),
+					),
+					'title'        => array(
+						'type'        => 'string',
+						'description' => __( 'Optional. New title (plain text).', 'dci-mcp-bridge' ),
+					),
+					'content_html' => array(
+						'type'        => 'string',
+						'description' => __( 'Optional. Replacement body as safe HTML (full replacement, not a patch).', 'dci-mcp-bridge' ),
+					),
+					'excerpt'      => array(
+						'type'        => 'string',
+						'description' => __( 'Optional. New excerpt.', 'dci-mcp-bridge' ),
+					),
+				),
+				'required'   => array( 'post_id' ),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id'      => array( 'type' => 'integer' ),
+					'status'       => array( 'type' => 'string' ),
+					'updated'      => array( 'type' => 'array', 'items' => array( 'type' => 'string' ) ),
+					'revision_saved' => array( 'type' => 'boolean' ),
+					'link'         => array( 'type' => 'string' ),
+					'edit_link'    => array( 'type' => 'string' ),
+				),
+				'required'   => array( 'post_id', 'status', 'updated' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_update_published_post',
+			'permission_callback' => 'dci_mcp_bridge_permission_edit_published',
+			'meta'                => array(
+				'annotations' => array(
+					'readonly'    => false,
+					'destructive' => true,   // Mengubah konten yang sedang live.
+					'idempotent'  => true,
+				),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
 }
 
 /* ============================================================
@@ -794,6 +859,27 @@ function dci_mcp_bridge_permission_read( $input = null ) {
 	return true;
 }
 
+/**
+ * Izin khusus memperbaiki artikel terbit: kemampuan WordPress
+ * 'edit_published_posts' (Editor dan Administrator memilikinya).
+ *
+ * @param mixed $input Argumen ability (tidak dipakai di sini).
+ * @return bool|WP_Error
+ */
+function dci_mcp_bridge_permission_edit_published( $input = null ) {
+	unset( $input );
+
+	if ( ! current_user_can( 'edit_published_posts' ) ) {
+		return new WP_Error(
+			'dci_forbidden_published',
+			__( 'Hanya pengguna dengan kemampuan edit_published_posts (Editor/Administrator) yang dapat memperbaiki artikel terbit.', 'dci-mcp-bridge' ),
+			array( 'status' => 403 )
+		);
+	}
+
+	return true;
+}
+
 /* ============================================================
  * BAGIAN 4B — JAGAAN DRAF (DIPAKAI ABILITY PERBAIKI/SET-META)
  * ============================================================ */
@@ -823,22 +909,106 @@ function dci_mcp_bridge_get_editable_draft( $post_id ) {
 		);
 	}
 
-	// Keputusan keamanan: AI hanya boleh menyentuh draf. Artikel terbit
-	// harus diperbaiki lewat editor manusia agar ada kontrol penuh.
+	// Keputusan keamanan: ability ini hanya menyentuh draf. Artikel terbit
+	// memakai jalur terpisah (dci/update-published-post) yang membuat
+	// snapshot revisi sebelum mengubah apa pun.
 	$allowed_statuses = array( 'draft', 'pending', 'auto-draft' );
 
 	if ( ! in_array( $post->post_status, $allowed_statuses, true ) ) {
 		return new WP_Error(
 			'dci_not_editable_draft',
 			sprintf(
-				/* translators: %s: status post saat ini. */
-				__( 'Post ini berstatus "%s". Hanya draf (draft/pending) yang boleh diubah lewat AI — artikel yang sudah terbit silakan edit manual di editor.', 'dci-mcp-bridge' ),
-				$post->post_status
+				/* translators: 1: status post saat ini, 2: nama ability pengganti. */
+				__( 'Post ini berstatus "%1$s". Untuk draf gunakan ability ini; untuk artikel terbit gunakan %2$s.', 'dci-mcp-bridge' ),
+				$post->post_status,
+				'dci/update-published-post'
 			)
 		);
 	}
 
 	return $post;
+}
+
+/**
+ * Eksekusi ability dci/update-published-post: perbaiki artikel terbit.
+ * Snapshot revisi WordPress dibuat otomatis sebelum perubahan.
+ *
+ * @param array $input Argumen ability.
+ * @return array|WP_Error
+ */
+function dci_mcp_bridge_execute_update_published_post( $input = array() ) {
+	$input   = is_array( $input ) ? $input : array();
+	$post_id = absint( $input['post_id'] ?? 0 );
+	$post    = $post_id > 0 ? get_post( $post_id ) : null;
+
+	if ( ! $post || 'post' !== $post->post_type ) {
+		return new WP_Error(
+			'dci_post_not_found',
+			__( 'Post dengan ID tersebut tidak ditemukan (atau bukan post type "post").', 'dci-mcp-bridge' )
+		);
+	}
+
+	if ( 'publish' !== $post->post_status ) {
+		return new WP_Error(
+			'dci_not_published',
+			sprintf(
+				/* translators: 1: status post, 2: nama ability untuk draf. */
+				__( 'Post ini berstatus "%1$s" — bukan artikel terbit. Untuk draf, gunakan %2$s.', 'dci-mcp-bridge' ),
+				$post->post_status,
+				'dci/update-draft-post'
+			)
+		);
+	}
+
+	$update  = array( 'ID' => $post->ID );
+	$updated = array();
+
+	if ( isset( $input['title'] ) && '' !== trim( (string) $input['title'] ) ) {
+		$update['post_title'] = sanitize_text_field( (string) $input['title'] );
+		$updated[] = 'title';
+	}
+
+	if ( isset( $input['content_html'] ) && '' !== trim( (string) $input['content_html'] ) ) {
+		$update['post_content'] = wp_kses_post( (string) $input['content_html'] );
+		$updated[] = 'content';
+	}
+
+	if ( isset( $input['excerpt'] ) ) {
+		$update['post_excerpt'] = sanitize_text_field( (string) $input['excerpt'] );
+		$updated[] = 'excerpt';
+	}
+
+	if ( empty( $updated ) ) {
+		return new WP_Error(
+			'dci_nothing_to_update',
+			__( 'Tidak ada kolom yang dikirim. Sertakan minimal salah satu: title, content_html, atau excerpt.', 'dci-mcp-bridge' )
+		);
+	}
+
+	// Titik pemulihan: paksa snapshot revisi SEBELUM konten live berubah.
+	$revision_saved = false;
+
+	if ( function_exists( 'wp_save_post_revision' ) && function_exists( 'wp_revisions_enabled' ) && wp_revisions_enabled( $post ) ) {
+		$revision_saved = (bool) wp_save_post_revision( $post->ID );
+	}
+
+	$result = wp_update_post( $update, true );
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	$permalink = get_permalink( $post->ID );
+	$edit_link = get_edit_post_link( $post->ID, 'raw' );
+
+	return array(
+		'post_id'        => (int) $post->ID,
+		'status'         => 'publish',
+		'updated'        => $updated,
+		'revision_saved' => $revision_saved,
+		'link'           => $permalink ? $permalink : '',
+		'edit_link'      => $edit_link ? $edit_link : '',
+	);
 }
 
 /**
@@ -906,9 +1076,25 @@ function dci_mcp_bridge_execute_update_draft_post( $input = array() ) {
 function dci_mcp_bridge_execute_set_post_seo_meta( $input = array() ) {
 	$input = is_array( $input ) ? $input : array();
 
-	$post = dci_mcp_bridge_get_editable_draft( $input['post_id'] ?? 0 );
-	if ( is_wp_error( $post ) ) {
-		return $post;
+	$allow_published = ! empty( $input['allow_published'] );
+
+	if ( $allow_published ) {
+		// Mode artikel terbit: hanya meta yang diubah (konten tak disentuh).
+		$post_id = absint( $input['post_id'] ?? 0 );
+		$post    = $post_id > 0 ? get_post( $post_id ) : null;
+
+		if ( ! $post || 'post' !== $post->post_type ) {
+			return new WP_Error(
+				'dci_post_not_found',
+				__( 'Post dengan ID tersebut tidak ditemukan (atau bukan post type "post").', 'dci-mcp-bridge' )
+			);
+		}
+	} else {
+		$post = dci_mcp_bridge_get_editable_draft( $input['post_id'] ?? 0 );
+
+		if ( is_wp_error( $post ) ) {
+			return $post;
+		}
 	}
 
 	// Kunci postmeta diverifikasi dari source Rank Math (seo-by-rank-math).
@@ -2459,6 +2645,7 @@ function dci_mcp_bridge_ability_table() {
 		array( 'name' => 'dci/generate-text', 'label' => __( 'Generate Text (AI Puffer)', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca — memakai kredit AI', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/create-draft-post', 'label' => __( 'Create Draft Post', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — selalu draf', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/update-draft-post', 'label' => __( 'Update Draft Post', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — khusus draf', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/update-published-post', 'label' => __( 'Update Published Post', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — live, snapshot revisi otomatis', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/set-post-seo-meta', 'label' => __( 'Set Post SEO Meta (Rank Math)', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — khusus draf', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/audit-article', 'label' => __( 'Audit Article (SEO On-Page)', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/publish-post', 'label' => __( 'Publish Draft Post', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — aksi eksplisit', 'dci-mcp-bridge' ) ),
@@ -2822,7 +3009,7 @@ function dci_mcp_bridge_render_admin_page() {
 				<strong><?php esc_html_e( 'Kebiasaan emas: sebutkan nama situsnya.', 'dci-mcp-bridge' ); ?></strong>
 				<?php esc_html_e( 'Kalau aplikasi AI Anda terhubung ke lebih dari satu situs, selalu awali perintah dengan nama situs (contoh di bawah memakai [Nama Situs]) — begitu juga saat menindaklanjuti pembicaraan lama. Kalau hanya satu situs yang terhubung, tidak wajib.', 'dci-mcp-bridge' ); ?>
 			</p>
-			<pre class="dci-snip" style="overflow:auto;padding:14px;background:#1d2327;color:#d4d4d4;border-radius:6px;"><code><?php echo esc_html( "1) Membuat artikel baru (selalu masuk draft dulu):\n   \"Buatkan artikel tentang [topik] untuk situs [Nama Situs],\n    sekitar [800] kata. Pakai data aktual dari internet sebagai\n    referensi, sertakan tautan ke artikel terkait di situs itu.\"\n\n2) Mengaudit dan memperbaiki artikel yang sudah ada:\n   \"Cek artikel [judul artikel] di situs [Nama Situs]:\n    audit SEO-nya, lalu perbaiki semua yang bermasalah.\"\n\n3) Menelusuri isi situs sendiri (tanpa browsing, tidak mungkin salah domain):\n   \"Di situs [Nama Situs], telusuri semua artikel dan halaman:\n    ada nomor telepon lain selain [nomor default]? Sebutkan di artikel mana.\"\n\n4) Pemeriksaan akhir sebelum terbit (memakai kredit Winston):\n   \"Untuk artikel [judul] di [Nama Situs]: periksa dulu apakah\n    terdeteksi AI atau ada plagiarisme. Laporkan skornya.\"\n\n5) Meminta revisi gaya bahasa:\n   \"Bagian pembuka artikel [judul] di [Nama Situs] masih terasa\n    kaku. Tulis ulang biar lebih mengalir seperti orang bicara.\"\n\n6) Menerbitkan (hanya kalau Anda benar-benar yakin):\n   \"Terbitkan artikel [judul] di [Nama Situs] sekarang.\"" ); ?></code></pre>
+			<pre class="dci-snip" style="overflow:auto;padding:14px;background:#1d2327;color:#d4d4d4;border-radius:6px;"><code><?php echo esc_html( "1) Membuat artikel baru (selalu masuk draft dulu):\n   \"Buatkan artikel tentang [topik] untuk situs [Nama Situs],\n    sekitar [800] kata. Pakai data aktual dari internet sebagai\n    referensi, sertakan tautan ke artikel terkait di situs itu.\"\n\n2) Mengaudit dan memperbaiki artikel yang sudah ada:\n   \"Cek artikel [judul artikel] di situs [Nama Situs]:\n    audit SEO-nya, lalu perbaiki semua yang bermasalah.\"\n\n3) Menelusuri isi situs sendiri (tanpa browsing, tidak mungkin salah domain):\n   \"Di situs [Nama Situs], telusuri semua artikel dan halaman:\n    ada nomor telepon lain selain [nomor default]? Sebutkan di artikel mana.\"\n\n4) Pemeriksaan akhir sebelum terbit (memakai kredit Winston):\n   \"Untuk artikel [judul] di [Nama Situs]: periksa dulu apakah\n    terdeteksi AI atau ada plagiarisme. Laporkan skornya.\"\n\n5) Meminta revisi gaya bahasa:\n   \"Bagian pembuka artikel [judul] di [Nama Situs] masih terasa\n    kaku. Tulis ulang biar lebih mengalir seperti orang bicara.\"\n\n6) Memperbaiki artikel yang SUDAH TERBIT (perubahan langsung live,\n    WordPress menyimpan snapshot revisi otomatis sebagai titik pemulihan):\n   \"Perbaiki artikel terbit [judul] di [Nama Situs]: [perbaikan yang diminta].\n    Ingat ini artikel live, ubah satu bagian dulu.\"\n\n7) Menerbitkan (hanya kalau Anda benar-benar yakin):\n   \"Terbitkan artikel [judul] di [Nama Situs] sekarang.\"" ); ?></code></pre>
 			<p class="description" style="margin-bottom:0;">
 				<?php esc_html_e( 'Pola dasarnya selalu sama: SEBUT SITUSNYA → sebut tugasnya → sebatas hasil yang diinginkan (draft atau terbit). Pemeriksaan integritas (nomor 4) memakai kredit Winston AI per kata — mintalah sekali menjelang final, bukan di setiap revisi.', 'dci-mcp-bridge' ); ?>
 			</p>

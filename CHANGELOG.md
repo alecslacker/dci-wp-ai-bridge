@@ -6,6 +6,27 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.9.0] — 2026-10-08
+
+### Ditambahkan
+- **`dci/update-published-post`** (kemampuan ke-11) — memperbaiki artikel yang sudah
+  terbit lewat AI, melengkapi laporan lapangan "PUBLISHED. Ditolak.". Pengaman berlapis:
+  - Snapshot revisi WordPress **dipaksa dibuat SEBELUM** perubahan (titik pemulihan);
+  - Capability `edit_published_posts` wajib (Editor/Administrator);
+  - Konten disanitasi; status selain `publish` ditolak dan diarahkan ke
+    `dci/update-draft-post`.
+- `dci/set-post-seo-meta`: parameter opsional **`allow_published`** (default false)
+  agar meta Rank Math bisa diisi pada artikel terbit — hanya meta, konten tak disentuh.
+- Contoh perintah #7 di tab Panduan: memperbaiki artikel terbit (ubah bertahap).
+
+### Berubah
+- Pesan penolakan kini saling mengarahkan: draf → `dci/update-draft-post`,
+  terbit → `dci/update-published-post` (tidak lagi "edit manual di editor").
+
+### Pengujian
+- Harness +4 uji regresi (T15: update terbit + snapshot, tolak draf, meta
+  allow_published, tolak tanpa flag) — total **51/51 PASS**.
+
 ## [1.8.1] — 2026-10-08
 
 ### Berubah
