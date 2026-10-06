@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           2.2.1
+ * Version:           2.3.0
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '2.2.1' );
+define( 'DCI_MCP_BRIDGE_VERSION', '2.3.0' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -246,7 +246,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/update-draft-post',
 		array(
 			'label'       => __( 'Update Draft Post', 'dci-mcp-bridge' ),
-			'description' => __( "Update an existing DRAFT post's title, body, and/or excerpt. Works ONLY on drafts (status draft/pending/auto-draft); published posts are rejected. content_html is a FULL replacement: first fetch content_html via dci/get-content, edit only the target part, then send back the complete document (preserve block markup). Typical flow: audit with dci/audit-article, generate improved content with dci/generate-text, then apply it here.", 'dci-mcp-bridge' ),
+			'description' => __( "Update an existing DRAFT post's/page's title, body, and/or excerpt. Works ONLY on drafts (draft/pending/future); published content is rejected. BODY MODES: (a) TARGETED PATCH (preferred for small edits): pass replace_html (exact substring copied from content_html) + with_html (replacement) + expected_hash (content_hash from dci/get-content) — only the fragment is sanitized, and the edit is refused if the content changed since you read it; (b) FULL REPLACEMENT: content_html (use content_html as the base, edit the target part, send back the complete document). Typical flow: audit with dci/audit-article, then apply here.", 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -410,7 +410,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/publish-post',
 		array(
 			'label'       => __( 'Publish Draft Post', 'dci-mcp-bridge' ),
-			'description' => __( 'Publish an existing DRAFT post immediately. This is an explicit, separate action: create/update always stay in draft, then this ability publishes when the user clearly asks for it (e.g. "langsung terbit"). Requires the publish_posts capability (Editor+). Returns the live permalink.', 'dci-mcp-bridge' ),
+			'description' => __( 'Publish an existing DRAFT post/page immediately, or SCHEDULE it by passing scheduled_date (ISO-8601 WITH timezone offset, e.g. 2026-10-10T09:00:00+07:00; must be >=60 seconds ahead — WordPress then publishes it automatically via wp-cron). Explicit, separate action: create/update stay in draft. Requires publish_posts (publish_pages for pages). Returns the permalink.', 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -418,6 +418,10 @@ function dci_mcp_bridge_register_abilities() {
 					'post_id' => array(
 						'type'        => 'integer',
 						'description' => __( 'ID of the draft post to publish.', 'dci-mcp-bridge' ),
+					),
+					'scheduled_date' => array(
+						'type'        => 'string',
+						'description' => __( 'Optional. ISO-8601 with offset (e.g. 2026-10-10T09:00:00+07:00) — schedule instead of publish now.', 'dci-mcp-bridge' ),
 					),
 				),
 				'required'   => array( 'post_id' ),
@@ -666,7 +670,7 @@ function dci_mcp_bridge_register_abilities() {
 		'dci/update-published-post',
 		array(
 			'label'       => __( 'Update Published Post', 'dci-mcp-bridge' ),
-			'description' => __( "Update a PUBLISHED post's title/body/excerpt. Changes go LIVE immediately, but a WordPress revision snapshot is saved first as a restore point (requires the edit_published_posts capability). For drafts, use dci/update-draft-post instead. content_html is a FULL replacement: fetch content_html via dci/get-content FIRST, edit only the target part, then send back the complete document (preserve block markup) — never rewrite the article from scratch. Change one section at a time and verify after each.", 'dci-mcp-bridge' ),
+			'description' => __( "Update a PUBLISHED post's/page's title/body/excerpt. Changes go LIVE immediately, but a WordPress revision snapshot is saved first as a restore point (requires edit_published_posts/pages). BODY MODES: (a) TARGETED PATCH (preferred): replace_html (exact substring) + with_html + expected_hash (from dci/get-content content_hash) — refuses the edit if content changed since read; (b) FULL REPLACEMENT via content_html (base it on the document you read; never rewrite from scratch). Change one section at a time and verify after each.", 'dci-mcp-bridge' ),
 			'category'    => 'dci-content',
 			'input_schema'    => array(
 				'type'       => 'object',
@@ -916,6 +920,40 @@ function dci_mcp_bridge_register_abilities() {
 			),
 		)
 	);
+
+	/* --------------------------------------------------------
+	 * Ability 18: dci/content-hygiene — diagnostik higien konten.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/content-hygiene',
+		array(
+			'label'       => __( 'Content Hygiene Report', 'dci-mcp-bridge' ),
+			'description' => __( 'One-call content hygiene diagnostics (read-only, adopted from the Webmastery Site Toolkit idea): published posts/pages missing a FEATURED IMAGE, published posts missing an EXCERPT, SCHEDULED posts that are stuck (post_date_gmt already passed but still status future - usually broken wp-cron), and heuristic ORPHANED IMAGES (image attachments with no parent post whose file URL appears in no recent content). Scan depth default 100 newest items (max 300). Pairs with dci/set-featured-image and dci/set-media-alt to fix the findings.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'depth' => array( 'type' => 'integer', 'default' => 100, 'description' => __( 'Optional. How many newest items to scan (1-300).' ) ),
+				),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array(
+					'summary'    => array( 'type' => 'object' ),
+					'items'      => array( 'type' => 'array', 'items' => array( 'type' => 'object' ) ),
+					'notes'      => array( 'type' => 'array', 'items' => array( 'type' => 'string' ) ),
+				),
+				'required'   => array( 'summary', 'items' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_content_hygiene',
+			'permission_callback' => 'dci_mcp_bridge_permission_read',
+			'meta'                => array(
+				'annotations' => array( 'readonly' => true, 'destructive' => false, 'idempotent' => true ),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
 }
 
 /* ============================================================
@@ -1132,10 +1170,10 @@ function dci_mcp_bridge_get_editable_draft( $post_id ) {
 		);
 	}
 
-	// Keputusan keamanan: ability ini hanya menyentuh draf. Artikel terbit
-	// memakai jalur terpisah (dci/update-published-post) yang membuat
-	// snapshot revisi sebelum mengubah apa pun.
-	$allowed_statuses = array( 'draft', 'pending', 'auto-draft' );
+	// Keputusan keamanan: ability ini menyentuh draf (dan terjadwal — bisa
+	// dijadwalkan ulang). Artikel terbit memakai jalur terpisah
+	// (dci/update-published-post) yang membuat snapshot revisi sebelum mengubah.
+	$allowed_statuses = array( 'draft', 'pending', 'auto-draft', 'future' );
 
 	if ( ! in_array( $post->post_status, $allowed_statuses, true ) ) {
 		return new WP_Error(
@@ -1192,9 +1230,15 @@ function dci_mcp_bridge_execute_update_published_post( $input = array() ) {
 		$updated[] = 'title';
 	}
 
-	if ( isset( $input['content_html'] ) && '' !== trim( (string) $input['content_html'] ) ) {
-		$update['post_content'] = wp_kses_post( (string) $input['content_html'] );
-		$updated[] = 'content';
+	$resolved = dci_mcp_bridge_resolve_content_update( $post, $input );
+
+	if ( is_wp_error( $resolved ) ) {
+		return $resolved;
+	}
+
+	if ( null !== $resolved ) {
+		$update['post_content'] = $resolved;
+		$updated[] = isset( $input['replace_html'] ) ? 'content (patch)' : 'content';
 	}
 
 	if ( isset( $input['excerpt'] ) ) {
@@ -1205,7 +1249,7 @@ function dci_mcp_bridge_execute_update_published_post( $input = array() ) {
 	if ( empty( $updated ) ) {
 		return new WP_Error(
 			'dci_nothing_to_update',
-			__( 'Tidak ada kolom yang dikirim. Sertakan minimal salah satu: title, content_html, atau excerpt.', 'dci-mcp-bridge' )
+			__( 'Tidak ada kolom yang dikirim. Sertakan minimal salah satu: title, content_html, replace_html+with_html, atau excerpt.', 'dci-mcp-bridge' )
 		);
 	}
 
@@ -1232,7 +1276,57 @@ function dci_mcp_bridge_execute_update_published_post( $input = array() ) {
 		'revision_saved' => $revision_saved,
 		'link'           => $permalink ? $permalink : '',
 		'edit_link'      => $edit_link ? $edit_link : '',
+		'content_hash'   => isset( $update['post_content'] ) ? hash( 'sha256', (string) $update['post_content'] ) : null,
 	);
+}
+
+/**
+ * Helper bersama: hitung konten baru untuk update-draft/published.
+ *
+ * Tiga moda (v2.3.0):
+ *  1. PATCH — replace_html + with_html: penggantian substring persis; hanya
+ *     fragmen pengganti yang disanitasi (wp_kses_post), sisanya utuh.
+ *  2. FULL — content_html: penggantian penuh (perilaku lama).
+ *  3. GUARD — expected_hash (sha1 content dari dci/get-content): bila konten
+ *     saat ini sudah berubah sejak dibaca agent → error dci_stale_content
+ *     (anti saling menimpa / race condition).
+ *
+ * @param WP_Post $post  Konten target.
+ * @param array   $input Argumen ability.
+ * @return string|WP_Error Konten baru atau kesalahan.
+ */
+function dci_mcp_bridge_resolve_content_update( $post, array $input ) {
+	$current = (string) $post->post_content;
+
+	if ( ! empty( $input['expected_hash'] ) && is_string( $input['expected_hash'] ) ) {
+		if ( hash( 'sha256', $current ) !== trim( $input['expected_hash'] ) ) {
+			return new WP_Error(
+				'dci_stale_content',
+				__( 'Konten telah berubah sejak terakhir dibaca (hash tidak cocok). Baca ulang dengan dci/get-content, ambil content_hash terbaru, lalu ulangi patch.', 'dci-mcp-bridge' )
+			);
+		}
+	}
+
+	// Moda PATCH: substring persis diganti; fragmen baru saja disanitasi.
+	if ( isset( $input['replace_html'] ) && is_string( $input['replace_html'] ) && '' !== trim( $input['replace_html'] ) ) {
+		$with    = ( isset( $input['with_html'] ) && is_string( $input['with_html'] ) ) ? wp_kses_post( $input['with_html'] ) : '';
+		$patched = str_replace( $input['replace_html'], $with, $current, $n );
+
+		if ( 0 === $n ) {
+			return new WP_Error(
+				'dci_patch_not_found',
+				__( 'replace_html tidak ditemukan di konten. Salin substring persis (termasuk tag HTML-nya) dari content_html.', 'dci-mcp-bridge' )
+			);
+		}
+
+		return $patched;
+	}
+
+	if ( isset( $input['content_html'] ) && is_string( $input['content_html'] ) && '' !== trim( $input['content_html'] ) ) {
+		return wp_kses_post( $input['content_html'] );
+	}
+
+	return null; // Tidak ada perubahan konten (judul/excerpt saja).
 }
 
 /**
@@ -1257,9 +1351,15 @@ function dci_mcp_bridge_execute_update_draft_post( $input = array() ) {
 		$updated[] = 'title';
 	}
 
-	if ( isset( $input['content_html'] ) && '' !== trim( (string) $input['content_html'] ) ) {
-		$update['post_content'] = wp_kses_post( (string) $input['content_html'] );
-		$updated[] = 'content';
+	$resolved = dci_mcp_bridge_resolve_content_update( $post, $input );
+
+	if ( is_wp_error( $resolved ) ) {
+		return $resolved;
+	}
+
+	if ( null !== $resolved ) {
+		$update['post_content'] = $resolved;
+		$updated[] = isset( $input['replace_html'] ) ? 'content (patch)' : 'content';
 	}
 
 	if ( isset( $input['excerpt'] ) ) {
@@ -1270,7 +1370,7 @@ function dci_mcp_bridge_execute_update_draft_post( $input = array() ) {
 	if ( empty( $updated ) ) {
 		return new WP_Error(
 			'dci_nothing_to_update',
-			__( 'Tidak ada kolom yang dikirim. Sertakan minimal salah satu: title, content_html, atau excerpt.', 'dci-mcp-bridge' )
+			__( 'Tidak ada kolom yang dikirim. Sertakan minimal salah satu: title, content_html, replace_html+with_html, atau excerpt.', 'dci-mcp-bridge' )
 		);
 	}
 
@@ -1395,13 +1495,64 @@ function dci_mcp_bridge_execute_publish_post( $input = array() ) {
 		return $post;
 	}
 
-	$result = wp_update_post(
-		array(
-			'ID'          => $post->ID,
-			'post_status' => 'publish',
-		),
-		true
-	);
+	$update = array( 'ID' => $post->ID );
+
+	/* v2.3.0 — penjadwalan: scheduled_date ISO-8601 BER-_OFFSET (mis.
+	 * 2026-10-10T09:00:00+07:00). Validasi: format valid & >= 60 detik ke
+	 * depan (WP cron butuh jendala eksekusi). Kontrak: post_status 'future'
+	 * + post_date (waktu situs) + post_date_gmt (UTC) — wp-includes/post.php.
+	 */
+	if ( ! empty( $input['scheduled_date'] ) && is_string( $input['scheduled_date'] ) ) {
+		try {
+			$dt = new DateTime( trim( $input['scheduled_date'] ) );
+		} catch ( Exception $e ) {
+			$dt = null;
+		}
+
+		$ts = ( $dt instanceof DateTime ) ? $dt->getTimestamp() : 0;
+
+		if ( 0 === $ts ) {
+			return new WP_Error(
+				'dci_scheduled_date_invalid',
+				__( 'Format scheduled_date tidak valid. Gunakan ISO-8601 lengkap dengan offset, mis. 2026-10-10T09:00:00+07:00.', 'dci-mcp-bridge' )
+			);
+		}
+
+		if ( $ts - time() < 60 ) {
+			return new WP_Error(
+				'dci_scheduled_date_too_soon',
+				__( 'scheduled_date minimal 60 detik ke depan (WordPress cron memerlukan jendela eksekusi). Untuk terbit sekarang, hapus parameter ini.', 'dci-mcp-bridge' )
+			);
+		}
+
+		// Waktu situs: konversi via timezone_string / gmt_offset.
+		$tz_string = (string) get_option( 'timezone_string', '' );
+		$site_tz   = null;
+
+		if ( '' !== $tz_string ) {
+			try { $site_tz = new DateTimeZone( $tz_string ); } catch ( Exception $e ) { $site_tz = null; }
+		}
+
+		if ( null === $site_tz ) {
+			$offset = (float) get_option( 'gmt_offset', 0 );
+			$sign   = ( $offset < 0 ) ? '-' : '+';
+			$abs    = abs( $offset );
+			$site_tz = new DateTimeZone( sprintf( '%s%02d:%02d', $sign, floor( $abs ), ( $abs - floor( $abs ) ) * 60 ) );
+		}
+
+		$gmt  = clone $dt;
+		$gmt->setTimezone( new DateTimeZone( 'UTC' ) );
+		$local = clone $dt;
+		$local->setTimezone( $site_tz );
+
+		$update['post_status']   = 'future';
+		$update['post_date']     = $local->format( 'Y-m-d H:i:s' );
+		$update['post_date_gmt'] = $gmt->format( 'Y-m-d H:i:s' );
+	} else {
+		$update['post_status'] = 'publish';
+	}
+
+	$result = wp_update_post( $update, true );
 
 	if ( is_wp_error( $result ) ) {
 		return $result;
@@ -1410,9 +1561,10 @@ function dci_mcp_bridge_execute_publish_post( $input = array() ) {
 	$permalink = get_permalink( $post->ID );
 
 	return array(
-		'post_id' => (int) $post->ID,
-		'status'  => 'publish',
-		'link'    => $permalink ? $permalink : '',
+		'post_id'        => (int) $post->ID,
+		'status'         => $update['post_status'],
+		'link'           => $permalink ? $permalink : '',
+		'scheduled_date' => isset( $update['post_date'] ) ? $update['post_date'] : null,
 	);
 }
 
@@ -2067,6 +2219,102 @@ function dci_mcp_bridge_execute_update_elementor_text( $input = array() ) {
 }
 
 /**
+ * Eksekusi ability dci/content-hygiene: diagnostik higien konten.
+ *
+ * @param array $input Argumen ability.
+ * @return array
+ */
+function dci_mcp_bridge_execute_content_hygiene( $input = array() ) {
+	$input = is_array( $input ) ? $input : array();
+	$depth = min( 300, max( 1, absint( $input['depth'] ?? 100 ) ) );
+
+	$items = get_posts( array(
+		'post_type'      => array( 'post', 'page' ),
+		'post_status'    => array( 'publish', 'future' ),
+		'posts_per_page' => $depth,
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+	) );
+
+	if ( ! is_array( $items ) ) {
+		$items = array();
+	}
+
+	$haystack   = '';
+	$findings   = array();
+	$now_ts     = time();
+	$c_featured = 0; $c_excerpt = 0; $c_stuck = 0; $c_orphan = 0;
+
+	foreach ( $items as $it ) {
+		$haystack .= "\n" . (string) $it->post_content;
+
+		if ( 'publish' === $it->post_status ) {
+			if ( '' === (string) get_post_meta( $it->ID, '_thumbnail_id', true ) ) {
+				$c_featured++;
+				$findings[] = array( 'type' => 'missing_featured', 'id' => (int) $it->ID, 'title' => (string) $it->post_title, 'url' => (string) get_permalink( $it->ID ) );
+			}
+			if ( '' === trim( (string) $it->post_excerpt ) && 'post' === $it->post_type ) {
+				$c_excerpt++;
+				$findings[] = array( 'type' => 'missing_excerpt', 'id' => (int) $it->ID, 'title' => (string) $it->post_title, 'url' => (string) get_permalink( $it->ID ) );
+			}
+		} else {
+			// Terjadwal macet: waktu GMT sudah lewat >5 menit tapi masih future.
+			$gmt_ts = isset( $it->post_date_gmt ) && $it->post_date_gmt && '0000-00-00 00:00:00' !== $it->post_date_gmt
+				? strtotime( (string) $it->post_date_gmt . ' UTC' )
+				: 0;
+
+			if ( $gmt_ts > 0 && ( $now_ts - $gmt_ts ) > 300 ) {
+				$c_stuck++;
+				$findings[] = array( 'type' => 'stuck_scheduled', 'id' => (int) $it->ID, 'title' => (string) $it->post_title, 'url' => (string) get_permalink( $it->ID ), 'scheduled_gmt' => (string) $it->post_date_gmt );
+			}
+		}
+	}
+
+	// Media yatim heuristik: gambar tanpa induk yang URL filenya tak muncul
+	// di konten yang discan.
+	$media = get_posts( array(
+		'post_type'      => 'attachment',
+		'post_status'    => 'inherit',
+		'post_mime_type' => 'image',
+		'posts_per_page' => min( 300, $depth * 2 ),
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+	) );
+
+	if ( ! is_array( $media ) ) {
+		$media = array();
+	}
+
+	foreach ( $media as $m ) {
+		if ( (int) $m->post_parent > 0 ) {
+			continue;
+		}
+
+		$url = function_exists( 'wp_get_attachment_url' ) ? (string) wp_get_attachment_url( $m->ID ) : '';
+		$file = $url ? trim( (string) wp_parse_url( $url, PHP_URL_PATH ) ) : '';
+
+		if ( '' === $file || false === strpos( $haystack, $file ) ) {
+			$c_orphan++;
+			$findings[] = array( 'type' => 'orphaned_image', 'id' => (int) $m->ID, 'title' => (string) $m->post_title, 'url' => $url );
+		}
+	}
+
+	return array(
+		'summary' => array(
+			'scanned'         => count( $items ),
+			'missing_featured' => $c_featured,
+			'missing_excerpt' => $c_excerpt,
+			'stuck_scheduled' => $c_stuck,
+			'orphaned_images' => $c_orphan,
+		),
+		'items'   => array_slice( $findings, 0, 100 ),
+		'notes'   => array(
+			__( 'Orphaned image bersifat heuristik (URL tak ditemukan pada konten terbaru yang discan) — verifikasi sebelum menghapus.', 'dci-mcp-bridge' ),
+		),
+	);
+}
+
+/**
  * Eksekusi ability dci/site-report: snapshot operasional situs.
  *
  * @return array
@@ -2609,6 +2857,9 @@ function dci_mcp_bridge_execute_get_content( $input = array() ) {
 		'content_text' => $content_text,
 		// HTML mentah tersimpan (termasuk markup blok) — basis read-modify-write.
 		'content_html' => (string) $post->post_content,
+		// v2.3.0: sidik jari konten — kirim kembali sebagai expected_hash saat
+		// patch agar edit ditolak bila konten berubah sejak dibaca.
+		'content_hash' => hash( 'sha256', (string) $post->post_content ),
 		'elementor'    => $elementor,
 	);
 }
@@ -2795,7 +3046,7 @@ function dci_mcp_bridge_winston_request_rotated( $path, array $body, $timeout ) 
 	for ( $i = 0; $i < $count; $i++ ) {
 		$pos  = ( $idx + $i ) % $count;
 		$key  = $keys[ $pos ];
-		$hash = md5( $key );
+		$hash = hash( 'sha256', $key );
 
 		// Lewati kunci yang sedang diistirahatkan.
 		if ( isset( $cooldown[ $hash ] ) && ( $now - (int) $cooldown[ $hash ] ) < 1800 ) {
@@ -3536,6 +3787,7 @@ function dci_mcp_bridge_ability_table() {
 		array( 'name' => 'dci/set-media-alt', 'label' => __( 'Set Media Alt Text', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — meta media', 'dci-mcp-bridge' ) ),
 		 array( 'name' => 'dci/set-featured-image', 'label' => __( 'Set Featured Image', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — draf (ops. terbit)', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/update-elementor-text', 'label' => __( 'Update Elementor Text', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — sumber _elementor_data', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/content-hygiene', 'label' => __( 'Content Hygiene Report', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
 	);
 }
 

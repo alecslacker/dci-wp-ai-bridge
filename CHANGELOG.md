@@ -6,6 +6,31 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [2.3.0] — 2026-10-08
+
+### Ditambahkan (adopsi riset kompetitor: Webmastery Site Toolkit & abilities-mcp)
+- **Patch terjaga-hash** pada kedua ability update: moda TARGETED PATCH
+  (`replace_html`+`with_html` — hanya fragmen pengganti disanitasi) dengan
+  `expected_hash` (SHA-256) yang menolak edit bila konten berubah sejak dibaca
+  (error `dci_stale_content`, anti race/saling menimpa). `dci/get-content`
+  kini mengembalikan `content_hash`; update-published juga mengembalikan hash baru.
+- **Penjadwalan terbit**: publish-post + `scheduled_date` (ISO-8601 wajib
+  ber-offset; ≥60 dtk; konversi via timezone_string/gmt_offset; status future
+  + post_date/post_date_gmt). Status `future` kini bisa dijadwalkan ulang
+  (guard draft + future). Error spesifik: invalid / too_soon.
+- **`dci/content-hygiene`** (ability 18): featured kosong, excerpt kosong
+  (post terbit), terjadwal macet (gmt lewat >5 mnt), gambar yatim heuristik
+  (URL tak muncul di konten terbaru yang discan; catatan verifikasi disertakan).
+
+### Keamanan
+- Semua fingerprint naik ke SHA-256 (content_hash, cooldown Winston) —
+  mengikuti tinjauan Mimosa (SHA-1/MD5 kelas lemah).
+
+### Pengujian
+- Harness T22 +9 uji = **85/85**; stub get_posts kini menyaring post_type/
+  status pintar; wp_update_post merekam argumen. Dua bug uji tertangkap &
+  diperbaiki (state objek bersama; data uji excerpt/img).
+
 ## [2.2.1] — 2026-10-08
 
 ### Diperbaiki

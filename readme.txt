@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.2.1
+Stable tag: 2.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,13 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 1. Halaman DCI Bridge — status integrasi, konfigurasi keamanan, tabel kemampuan, dan panduan koneksi AI agent.
 
 == Changelog ==
+
+= 2.3.0 =
+* Baru (adopsi hasil riset kompetitor): **patch terjaga-hash** pada update-draft-post & update-published-post — kirim `replace_html`+`with_html` (substring persis, hanya fragmen pengganti disanitasi) + `expected_hash` (content_hash SHA-256 dari dci/get-content); edit ditolak bila konten berubah sejak dibaca (anti saling menimpa).
+* Baru: **penjadwalan terbit** — publish-post menerima `scheduled_date` ISO-8601 ber-offset (mis. 2026-10-10T09:00:00+07:00), validasi ≥60 detik, konversi zona waktu situs, status `future` + `post_date_gmt` benar; artikel terjadwal bisa dijadwalkan ulang.
+* Baru: kemampuan `dci/content-hygiene` — diagnostik sekali panggil: gambar utama kosong, excerpt kosong, artikel terjadwal macet (indikasi cron), dan gambar yatim heuristik; berpasangan dengan set-featured-image & set-media-alt untuk memperbaiki temuan.
+* Keamanan: semua sidik jari konten memakai SHA-256 (pengganti SHA-1/MD5) — termasuk hash kunci cooldown Winston.
+* Total 18 kemampuan. Harness +9 uji (85/85 PASS).
 
 = 2.2.1 =
 * Perbaikan: meta Rank Math (`dci/set-post-seo-meta`) pada **halaman terbit** masih ditolak guard lama — kini `allow_published` menerima post MAUPUN page (meta saja, konten tak disentuh). Regresi +2 uji (76/76 PASS).

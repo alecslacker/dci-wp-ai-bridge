@@ -97,8 +97,9 @@ namespace {
 		return isset( $GLOBALS['dci_meta'][ $k ] ) ? $GLOBALS['dci_meta'][ $k ] : '';
 	}
 	function update_post_meta( $id, $k, $v ) { $GLOBALS['dci_meta'][ (int) $id ][ $k ] = $v; return true; }
-	function wp_update_post( $arr, $err = false ) { return $arr['ID']; }
+	function wp_update_post( $arr, $err = false ) { $GLOBALS['dci_last_update'] = $arr; return $arr['ID']; }
 	function wp_insert_post( $arr, $err = false ) { return 777; }
+	$GLOBALS['dci_last_update'] = array();
 	function number_format_i18n( $n ) { return (string) $n; }
 	function wp_nonce_field( $a ) { echo ''; }
 	function wp_nonce_url( $u, $a ) { return $u . '&_wpnonce=x'; }
@@ -121,7 +122,19 @@ namespace {
 	function wp_has_ability( $n ) { return isset( $GLOBALS['dci_abilities'][ $n ] ); }
 	function get_plugins( $folder = '' ) { return isset( $GLOBALS['dci_plugins'] ) ? $GLOBALS['dci_plugins'] : array(); }
 	function is_plugin_active( $file ) { return isset( $GLOBALS['dci_plugins'][ $file ] ); }
-	function get_posts( $args = array() ) { return isset( $GLOBALS['dci_posts_list'] ) ? $GLOBALS['dci_posts_list'] : array(); }
+	function get_posts( $args = array() ) {
+		$list = isset( $GLOBALS['dci_posts_list'] ) ? $GLOBALS['dci_posts_list'] : array();
+		$out  = array();
+		foreach ( $list as $p ) {
+			if ( ! empty( $args['post_type'] ) && is_array( $args['post_type'] ) && ! in_array( $p->post_type, $args['post_type'], true ) ) { continue; }
+			if ( ! empty( $args['post_type'] ) && is_string( $args['post_type'] ) && $p->post_type !== $args['post_type'] ) { continue; }
+			if ( ! empty( $args['post_status'] ) && is_array( $args['post_status'] ) && ! in_array( $p->post_status, $args['post_status'], true ) ) { continue; }
+			if ( ! empty( $args['post_status'] ) && is_string( $args['post_status'] ) && $p->post_status !== $args['post_status'] ) { continue; }
+			$out[] = $p;
+		}
+		if ( ! empty( $args['posts_per_page'] ) ) { $out = array_slice( $out, 0, (int) $args['posts_per_page'] ); }
+		return $out;
+	}
 	function url_to_postid( $url ) { return isset( $GLOBALS['dci_url_map'][ $url ] ) ? $GLOBALS['dci_url_map'][ $url ] : 0; }
 	function wp_trim_words( $text, $num = 55, $more = '…' ) { $words = preg_split( '/\s+/u', trim( (string) $text ) ); if ( count( $words ) <= $num ) { return implode( ' ', $words ); } return implode( ' ', array_slice( $words, 0, $num ) ) . $more; }
 	function esc_url_raw( $url ) { return $url; }
@@ -263,6 +276,52 @@ namespace {
 	$meta_page_no = dci_mcp_bridge_execute_set_post_seo_meta( array( 'post_id' => 402, 'meta_title' => 'Tanpa Flag' ) );
 	check( 'T21b page terbit tanpa allow_published → tetap ditolak', is_wp_error( $meta_page_no ) );
 
+	/* T22 — patch terjaga-hash + penjadwalan + higien (v2.3.0) */
+	$GLOBALS['dci_posts_list'] = array(
+		(object) array( 'ID' => 501, 'post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Target Patch', 'post_date' => '2026-06-01', 'post_date_gmt' => '2026-06-01 00:00:00', 'post_excerpt' => '', 'post_content' => '<p>Harga lama Rp100.</p><p>Kontak kami segera.</p><img src="https://example.test/wp-content/uploads/img601.jpg">' ),
+		(object) array( 'ID' => 502, 'post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Lengkap', 'post_date' => '2026-06-02', 'post_date_gmt' => '2026-06-02 00:00:00', 'post_excerpt' => 'ada', 'post_content' => '<p>ok</p>' ),
+		(object) array( 'ID' => 503, 'post_type' => 'post', 'post_status' => 'future', 'post_title' => 'Macet', 'post_date' => '2026-01-01', 'post_date_gmt' => '2026-01-01 00:00:00', 'post_excerpt' => 'ada', 'post_content' => '<p>menunggu</p>' ),
+		(object) array( 'ID' => 601, 'post_type' => 'attachment', 'post_status' => 'inherit', 'post_title' => 'Dipakai', 'post_date' => '2026-06-03', 'post_excerpt' => '', 'post_content' => '', 'post_parent' => 0, 'post_mime_type' => 'image/jpeg' ),
+		(object) array( 'ID' => 602, 'post_type' => 'attachment', 'post_status' => 'inherit', 'post_title' => 'Yatim', 'post_date' => '2026-06-04', 'post_excerpt' => '', 'post_content' => '', 'post_parent' => 0, 'post_mime_type' => 'image/jpeg' ),
+	);
+	$GLOBALS['dci_post'] = $GLOBALS['dci_posts_list'][0];
+	$GLOBALS['dci_meta'] = array(
+		501 => array(), 502 => array( '_thumbnail_id' => '9' ),
+	);
+
+	$hash = hash( 'sha256', $GLOBALS['dci_post']->post_content );
+	$stale = dci_mcp_bridge_execute_update_published_post( array( 'post_id' => 501, 'replace_html' => '<p>Harga lama Rp100.</p>', 'with_html' => '<p>Harga baru Rp200.</p>', 'expected_hash' => str_repeat( 'x', 40 ) ) );
+	check( 'T22a hash basi → edit ditolak', is_wp_error( $stale ) && 'dci_stale_content' === $stale->get_error_code() );
+
+	$GLOBALS['dci_last_update'] = array();
+	$patch = dci_mcp_bridge_execute_update_published_post( array( 'post_id' => 501, 'replace_html' => '<p>Harga lama Rp100.</p>', 'with_html' => '<p>Harga baru Rp200.</p>', 'expected_hash' => $hash ) );
+	$patched_content = isset( $GLOBALS['dci_last_update']['post_content'] ) ? $GLOBALS['dci_last_update']['post_content'] : '';
+	check( 'T22b patch diterapkan persis + hash cocok', ! is_wp_error( $patch ) && false !== strpos( $patched_content, 'Rp200' ) && false === strpos( $patched_content, 'Rp100' ) && false !== strpos( $patched_content, 'Kontak kami' ) );
+
+	$miss = dci_mcp_bridge_execute_update_published_post( array( 'post_id' => 501, 'replace_html' => '<p>TIDAKADA</p>', 'with_html' => 'x', 'expected_hash' => hash( 'sha256', $GLOBALS['dci_post']->post_content ) ) );
+	check( 'T22c substring tak ditemukan → error', is_wp_error( $miss ) && 'dci_patch_not_found' === $miss->get_error_code() );
+
+	$GLOBALS['dci_post']->post_status = 'draft';
+	$sched_iso = gmdate( 'Y-m-d\TH:i:s\Z', time() + 3600 );
+	$sch = dci_mcp_bridge_execute_publish_post( array( 'post_id' => 501, 'scheduled_date' => $sched_iso ) );
+	check( 'T22d penjadwalan → status future + tanggal gmt', ! is_wp_error( $sch ) && 'future' === $sch['status'] && isset( $GLOBALS['dci_last_update']['post_date_gmt'] ) && 'future' === $GLOBALS['dci_last_update']['post_status'] );
+
+	$soon = dci_mcp_bridge_execute_publish_post( array( 'post_id' => 501, 'scheduled_date' => gmdate( 'Y-m-d\TH:i:s\Z', time() + 5 ) ) );
+	check( 'T22e terlalu dekat → dci_scheduled_date_too_soon', is_wp_error( $soon ) && 'dci_scheduled_date_too_soon' === $soon->get_error_code() );
+	$bad = dci_mcp_bridge_execute_publish_post( array( 'post_id' => 501, 'scheduled_date' => 'bogus' ) );
+	check( 'T22f format invalid → error jelas', is_wp_error( $bad ) && 'dci_scheduled_date_invalid' === $bad->get_error_code() );
+
+	// Pulihkan status tersimpan (publish) — penjadwalan pada stub hanya
+	// merekam argumen, objek uji tidak berubah sendiri.
+	$GLOBALS['dci_post']->post_status = 'publish';
+
+	$hyg = dci_mcp_bridge_execute_content_hygiene( array() );
+	$types = array();
+	foreach ( $hyg['items'] as $f ) { $types[ $f['type'] ] = ($types[ $f['type'] ] ?? 0) + 1; }
+	check( 'T22g higien: featured kosong + excerpt terdeteksi', 1 === $hyg['summary']['missing_featured'] && 1 === ($types['missing_excerpt'] ?? 0) );
+	check( 'T22h higien: terjadwal macet terdeteksi', 1 === $hyg['summary']['stuck_scheduled'] );
+	check( 'T22i higien: media yatim heuristik (602 yatim, 601 dipakai 501)', 1 === $hyg['summary']['orphaned_images'] );
+
 	/* T17 — konsistensi UI ↔ registry (anti lupa baris tabel admin) */
 	$table_rows = dci_mcp_bridge_ability_table();
 	$table_names = array();
@@ -290,13 +349,13 @@ namespace {
 	foreach ( $GLOBALS['dci_http_log'] as $log ) { $auths[] = $log['args']['headers']['Authorization']; }
 	check( 'T5b kunci dicoba berurutan', array( 'Bearer K1AAAA1111', 'Bearer K2BBBB2222' ) === $auths );
 	$cool = get_option( 'dci_mcp_bridge_key_cooldown' );
-	check( 'T5c kunci gagal kena cooldown', 1 === count( $cool ) && isset( $cool[ md5( 'K1AAAA1111' ) ] ) );
+	check( 'T5c kunci gagal kena cooldown', 1 === count( $cool ) && isset( $cool[ hash( 'sha256', 'K1AAAA1111' ) ] ) );
 	check( 'T5d indeks rotasi maju', 0 === (int) get_option( 'dci_mcp_bridge_rotation_index' ) );
 
 	/* T6 — semua kunci cooldown → error jelas */
 	$GLOBALS['dci_store']['dci_mcp_bridge_key_cooldown'] = array(
-		md5( 'K1AAAA1111' ) => time(),
-		md5( 'K2BBBB2222' ) => time(),
+		hash( 'sha256', 'K1AAAA1111' ) => time(),
+		hash( 'sha256', 'K2BBBB2222' ) => time(),
 	);
 	$GLOBALS['dci_http_queue'] = array();
 	$err = dci_mcp_bridge_winston_request_rotated( 'v2/plagiarism', array( 'text' => 'x' ), 5 );
