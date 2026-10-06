@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.5.1
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,12 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 1. Halaman DCI Bridge — status integrasi, konfigurasi keamanan, tabel kemampuan, dan panduan koneksi AI agent.
 
 == Changelog ==
+
+= 1.6.0 =
+* Baru: **generator koneksi AI agent** di halaman DCI Bridge — potongan konfigurasi siap-copy-paste untuk 10 klien: Claude Code, Cursor, Codex CLI (TOML), TRAE, OpenClaw (CLI), Antigravity (serverUrl), Hermes (YAML), AutoClaw, Z Code, dan pola custom (termasuk cadangan mcp-remote untuk klien STDIO-only).
+* Baru: **nama MCP otomatis dari domain situs** (mis. www.djayakontainer.co.id → djayakontainer).
+* Baru: **kalkulator autentikasi di-browser** — isi username + Application Password sekali, seluruh potongan terisi header Authorization otomatis (base64 dihitung di browser, tidak dikirim ke mana pun, tidak disimpan).
+* Baru: tombol Salin per potongan; format tiap klien diambil dari dokumentasi resminya (bukan opini).
 
 = 1.5.1 =
 * Perbaikan penting: deteksi mesin AI Puffer gagal di situs nyata karena kelas internal berada di namespace WPAICG (WPAICG\Core\AIPKit_AI_Caller) — sebelumnya diperiksa sebagai kelas global, sehingga kartu status menampilkan NONAKTIF dan generate selalu jatuh ke jalur cadangan. Kini resolusi FQCN mencoba WPAICG\Core\, WPAICG\, lalu global.

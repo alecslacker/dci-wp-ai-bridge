@@ -6,6 +6,32 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [1.6.0] — 2026-10-07
+
+### Ditambahkan
+- **Generator koneksi AI agent** di halaman admin DCI Bridge — 10 potongan konfigurasi
+  siap-copy-paste, formatnya diverifikasi dari dokumentasi resmi masing-masing klien:
+  - **Claude Code**: `claude mcp add --transport http ... --header` + `.mcp.json` (`type/http/url/headers`).
+  - **Cursor**: `~/.cursor/mcp.json` (`type/http/url/headers`).
+  - **Codex (OpenAI)**: `~/.codex/config.toml` `[mcp_servers.*]` `url` + `http_headers`.
+  - **TRAE**: `mcpServers` via Settings → MCP (`streamable-http`).
+  - **OpenClaw**: `openclaw mcp add <slug> --url ... --transport streamable-http --header`.
+  - **Antigravity (Google)**: `~/.gemini/antigravity/mcp_config.json` dengan **`serverUrl`**
+    (bukan `url` — perbedaan skema antar klien yang mudah keliru).
+  - **Hermes**: blok `mcp_servers` di `config.yaml`.
+  - **AutoClaw**: JSON standar via Settings → MCP Servers.
+  - **Z Code**: `~/.zcode/cli/config.json` → `mcp.servers` (dikonfirmasi dari file lokal).
+  - **Custom**: pola standar + cadangan `mcp-remote` (npx) untuk klien STDIO-only.
+- **Nama MCP otomatis dari domain situs** (www.djayakontainer.co.id → `djayakontainer`).
+- **Kalkulator autentikasi di-browser**: username + Application Password dimasukkan sekali,
+  header `Authorization: Basic <base64>` terhitung di browser (JavaScript, tidak dikirim ke
+  server, tidak disimpan) dan mengisi seluruh potongan secara live.
+- Tombol **Salin** per potongan (clipboard API).
+
+### Keamanan
+- Kredensial yang diketik di halaman admin tidak memiliki atribut `name`, tidak pernah
+  dikirim ke server, dan tidak disimpan — hilang saat halaman ditutup.
+
 ## [1.5.1] — 2026-10-07
 
 ### Diperbaiki
