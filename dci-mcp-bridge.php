@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           2.1.0
+ * Version:           2.2.0
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '2.1.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '2.2.0' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -877,6 +877,45 @@ function dci_mcp_bridge_register_abilities() {
 			),
 		)
 	);
+
+	/* --------------------------------------------------------
+	 * Ability 17: dci/update-elementor-text — sunting teks halaman
+	 * Elementor langsung di sumbernya (_elementor_data).
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/update-elementor-text',
+		array(
+			'label'       => __( 'Update Elementor Text', 'dci-mcp-bridge' ),
+			'description' => __( "Edit text on an Elementor-built page/post at its TRUE source (_elementor_data JSON) via exact find/replace — editing post_content on Elementor pages gets overwritten by the builder, so use THIS instead. Steps: read texts via dci/get-content (elementor.texts), then pass one find/replace pair (exact string). Whitelisted widget text keys: title (heading), editor (text editor), text. Works on DRAFTS by default; pass allow_published=true for published content. Clears Elementor CSS cache after saving.", 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id'         => array( 'type' => 'integer' ),
+					'find'            => array( 'type' => 'string', 'description' => __( 'Exact text to find (copy from elementor.texts).' ) ),
+					'replace'         => array( 'type' => 'string', 'description' => __( 'Replacement text (plain text; kept simple on purpose).' ) ),
+					'allow_published' => array( 'type' => 'boolean', 'default' => false ),
+				),
+				'required'   => array( 'post_id', 'find', 'replace' ),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id'     => array( 'type' => 'integer' ),
+					'replacements' => array( 'type' => 'integer' ),
+					'css_cache_cleared' => array( 'type' => 'boolean' ),
+				),
+				'required'   => array( 'post_id', 'replacements' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_update_elementor_text',
+			'permission_callback' => 'dci_mcp_bridge_permission_edit_posts',
+			'meta'                => array(
+				'annotations' => array( 'readonly' => false, 'destructive' => true, 'idempotent' => false ),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
 }
 
 /* ============================================================
@@ -989,12 +1028,22 @@ function dci_mcp_bridge_execute_create_draft_post( $input = array() ) {
  * @return bool|WP_Error True jika berhak.
  */
 function dci_mcp_bridge_permission_publish_posts( $input = null ) {
-	unset( $input );
+	// v2.2.0: kapabilitas mengikuti tipe konten (page memakai kapabilitas *_pages).
+	$cap    = 'publish_posts';
+	$target = is_array( $input ) ? get_post( absint( $input['post_id'] ?? 0 ) ) : null;
 
-	if ( ! current_user_can( 'publish_posts' ) ) {
+	if ( $target && 'page' === $target->post_type ) {
+		$cap = 'publish_pages';
+	}
+
+	if ( ! current_user_can( $cap ) ) {
 		return new WP_Error(
 			'dci_forbidden_publish',
-			__( 'Hanya pengguna dengan kemampuan publish_posts (Editor/Administrator) yang dapat menerbitkan artikel.', 'dci-mcp-bridge' ),
+			sprintf(
+				/* translators: %s: nama kapabilitas yang dibutuhkan. */
+				__( 'Pengguna Anda tidak punya kapabilitas %s (diperlukan untuk menerbitkan konten ini).', 'dci-mcp-bridge' ),
+				$cap
+			),
 			array( 'status' => 403 )
 		);
 	}
@@ -1030,12 +1079,22 @@ function dci_mcp_bridge_permission_read( $input = null ) {
  * @return bool|WP_Error
  */
 function dci_mcp_bridge_permission_edit_published( $input = null ) {
-	unset( $input );
+	// v2.2.0: kapabilitas mengikuti tipe konten.
+	$cap    = 'edit_published_posts';
+	$target = is_array( $input ) ? get_post( absint( $input['post_id'] ?? 0 ) ) : null;
 
-	if ( ! current_user_can( 'edit_published_posts' ) ) {
+	if ( $target && 'page' === $target->post_type ) {
+		$cap = 'edit_published_pages';
+	}
+
+	if ( ! current_user_can( $cap ) ) {
 		return new WP_Error(
 			'dci_forbidden_published',
-			__( 'Hanya pengguna dengan kemampuan edit_published_posts (Editor/Administrator) yang dapat memperbaiki artikel terbit.', 'dci-mcp-bridge' ),
+			sprintf(
+				/* translators: %s: nama kapabilitas yang dibutuhkan. */
+				__( 'Pengguna Anda tidak punya kapabilitas %s (diperlukan untuk memperbaiki konten terbit ini).', 'dci-mcp-bridge' ),
+				$cap
+			),
 			array( 'status' => 403 )
 		);
 	}
@@ -1065,10 +1124,11 @@ function dci_mcp_bridge_get_editable_draft( $post_id ) {
 
 	$post = get_post( $post_id );
 
-	if ( ! $post || 'post' !== $post->post_type ) {
+	// v2.2.0: draf POST maupun PAGE (halaman) sama-sama bisa dijembatani.
+	if ( ! $post || ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
 		return new WP_Error(
 			'dci_post_not_found',
-			__( 'Post dengan ID tersebut tidak ditemukan (atau bukan post type "post").', 'dci-mcp-bridge' )
+			__( 'Konten dengan ID tersebut tidak ditemukan (hanya post dan page yang didukung).', 'dci-mcp-bridge' )
 		);
 	}
 
@@ -1104,10 +1164,11 @@ function dci_mcp_bridge_execute_update_published_post( $input = array() ) {
 	$post_id = absint( $input['post_id'] ?? 0 );
 	$post    = $post_id > 0 ? get_post( $post_id ) : null;
 
-	if ( ! $post || 'post' !== $post->post_type ) {
+	// v2.2.0: artikel maupun halaman terbit.
+	if ( ! $post || ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
 		return new WP_Error(
 			'dci_post_not_found',
-			__( 'Post dengan ID tersebut tidak ditemukan (atau bukan post type "post").', 'dci-mcp-bridge' )
+			__( 'Konten dengan ID tersebut tidak ditemukan (hanya post dan page yang didukung).', 'dci-mcp-bridge' )
 		);
 	}
 
@@ -1116,7 +1177,7 @@ function dci_mcp_bridge_execute_update_published_post( $input = array() ) {
 			'dci_not_published',
 			sprintf(
 				/* translators: 1: status post, 2: nama ability untuk draf. */
-				__( 'Post ini berstatus "%1$s" — bukan artikel terbit. Untuk draf, gunakan %2$s.', 'dci-mcp-bridge' ),
+				__( 'Konten ini berstatus "%1$s" — belum terbit. Untuk draf, gunakan %2$s.', 'dci-mcp-bridge' ),
 				$post->post_status,
 				'dci/update-draft-post'
 			)
@@ -1596,10 +1657,11 @@ function dci_mcp_bridge_execute_audit_article( $input = array() ) {
 	$post_id = absint( $input['post_id'] ?? 0 );
 	$post    = $post_id > 0 ? get_post( $post_id ) : null;
 
-	if ( ! $post || 'post' !== $post->post_type ) {
+	// v2.2.0: post maupun page.
+	if ( ! $post || ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
 		return new WP_Error(
 			'dci_post_not_found',
-			__( 'Post dengan ID tersebut tidak ditemukan (atau bukan post type "post").', 'dci-mcp-bridge' )
+			__( 'Konten dengan ID tersebut tidak ditemukan (hanya post dan page yang didukung).', 'dci-mcp-bridge' )
 		);
 	}
 
@@ -1939,6 +2001,71 @@ function dci_mcp_bridge_execute_audit_article( $input = array() ) {
  * ============================================================ */
 
 /**
+ * Eksekusi ability dci/update-elementor-text: sunting teks di sumbernya.
+ *
+ * @param array $input Argumen ability.
+ * @return array|WP_Error
+ */
+function dci_mcp_bridge_execute_update_elementor_text( $input = array() ) {
+	$input = is_array( $input ) ? $input : array();
+
+	$post = ! empty( $input['allow_published'] )
+		? ( absint( $input['post_id'] ?? 0 ) > 0 ? get_post( absint( $input['post_id'] ) ) : null )
+		: dci_mcp_bridge_get_editable_draft( $input['post_id'] ?? 0 );
+
+	if ( is_wp_error( $post ) || ! $post ) {
+		return is_wp_error( $post ) ? $post : new WP_Error( 'dci_post_not_found', __( 'Konten tidak ditemukan (post/page).', 'dci-mcp-bridge' ) );
+	}
+
+	if ( 'builder' !== (string) get_post_meta( $post->ID, '_elementor_edit_mode', true ) ) {
+		return new WP_Error(
+			'dci_not_elementor',
+			__( 'Konten ini TIDAK dibangun dengan Elementor — gunakan dci/update-draft-post atau dci/update-published-post (edit post_content).', 'dci-mcp-bridge' )
+		);
+	}
+
+	$find    = isset( $input['find'] ) ? (string) $input['find'] : '';
+	$replace = isset( $input['replace'] ) ? (string) $input['replace'] : '';
+
+	if ( '' === $find || $find === $replace ) {
+		return new WP_Error( 'dci_invalid_args', __( 'Parameter find wajib diisi dan berbeda dari replace.', 'dci-mcp-bridge' ) );
+	}
+
+	$raw = get_post_meta( $post->ID, '_elementor_data', true );
+	$data = is_string( $raw ) ? json_decode( $raw, true ) : null;
+
+	if ( ! is_array( $data ) ) {
+		return new WP_Error( 'dci_elementor_data_invalid', __( 'Data Elementor (_elementor_data) kosong/rusak.', 'dci-mcp-bridge' ) );
+	}
+
+	$replacements = dci_mcp_bridge_elementor_replace_texts( $data, $find, $replace );
+
+	if ( 0 === $replacements ) {
+		return new WP_Error(
+			'dci_text_not_found',
+			__( 'Teks "find" tidak ditemukan di teks widget. Ambil teks persisnya dari dci/get-content → elementor.texts.', 'dci-mcp-bridge' )
+		);
+	}
+
+	// wp_slash: update_post_meta meng-unslash; JSON bertanda kutip butuh dilindungi.
+	update_post_meta( $post->ID, '_elementor_data', wp_slash( wp_json_encode( $data ) ) );
+
+	// Bersihkan cache CSS Elementor bila kelasnya ada (core/files/manager.php: clear_cache).
+	$cache_cleared = false;
+
+	if ( class_exists( '\Elementor\Plugin' ) && isset( \Elementor\Plugin::$instance ) && \Elementor\Plugin::$instance->files_manager ) {
+		\Elementor\Plugin::$instance->files_manager->clear_cache();
+		$cache_cleared = true;
+	}
+
+	return array(
+		'post_id'           => (int) $post->ID,
+		'replacements'      => $replacements,
+		'css_cache_cleared' => $cache_cleared,
+	);
+}
+
+/**
  * Eksekusi ability dci/site-report: snapshot operasional situs.
  *
  * @return array
@@ -2026,9 +2153,11 @@ function dci_mcp_bridge_execute_bulk_audit( $input = array() ) {
 	$input  = is_array( $input ) ? $input : array();
 	$count  = min( 50, max( 1, absint( $input['count'] ?? 10 ) ) );
 	$status = ( isset( $input['status'] ) && 'draft' === $input['status'] ) ? 'draft' : 'publish';
+	// v2.2.0: opsi ikut-serta halaman.
+	$types  = ! empty( $input['include_pages'] ) ? array( 'post', 'page' ) : array( 'post' );
 
 	$posts = get_posts( array(
-		'post_type'      => 'post',
+		'post_type'      => $types,
 		'post_status'    => $status,
 		'posts_per_page' => $count,
 		'orderby'        => 'date',
@@ -2440,14 +2569,33 @@ function dci_mcp_bridge_execute_get_content( $input = array() ) {
 
 	$post = $post_id > 0 ? get_post( $post_id ) : null;
 
-	if ( ! $post ) {
+	// v2.2.0: post maupun page.
+	if ( ! $post || ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
 		return new WP_Error(
 			'dci_post_not_found',
-			__( 'Konten tidak ditemukan di situs ini. Berikan post_id atau URL yang valid pada domain situs ini.', 'dci-mcp-bridge' )
+			__( 'Konten tidak ditemukan di situs ini (hanya post dan page yang didukung). Berikan post_id atau URL yang valid pada domain situs ini.', 'dci-mcp-bridge' )
 		);
 	}
 
 	$content_text = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( (string) $post->post_content ) ) );
+
+	/* v2.2.0 — sadar Elementor: kalau halaman dibangun dengan Elementor
+	 * (meta _elementor_edit_mode === 'builder', terverifikasi dari source),
+	 * post_content hanyalah hasil render — sumber kebenarannya _elementor_data.
+	 * Ekstrak teks widget agar agent bisa membaca tanpa membongkar JSON. */
+	$elementor = array( 'is_builder' => false, 'texts' => array() );
+
+	$edit_mode = get_post_meta( $post->ID, '_elementor_edit_mode', true );
+
+	if ( 'builder' === (string) $edit_mode ) {
+		$elementor['is_builder'] = true;
+		$raw_data = get_post_meta( $post->ID, '_elementor_data', true );
+		$data     = is_string( $raw_data ) ? json_decode( $raw_data, true ) : null;
+
+		if ( is_array( $data ) ) {
+			$elementor['texts'] = array_slice( dci_mcp_bridge_elementor_extract_texts( $data ), 0, 120 );
+		}
+	}
 
 	return array(
 		'post_id'      => (int) $post->ID,
@@ -2460,7 +2608,59 @@ function dci_mcp_bridge_execute_get_content( $input = array() ) {
 		'content_text' => $content_text,
 		// HTML mentah tersimpan (termasuk markup blok) — basis read-modify-write.
 		'content_html' => (string) $post->post_content,
+		'elementor'    => $elementor,
 	);
+}
+
+/**
+ * Rekursif ekstrak teks dari struktur _elementor_data.
+ * Kunci teks diverifikasi dari source widget Elementor:
+ * heading = settings.title, text-editor = settings.editor,
+ * kontrol teks generik = settings.text.
+ *
+ * @param array $node Node/struktur Elementor.
+ * @return array Daftar teks.
+ */
+function dci_mcp_bridge_elementor_extract_texts( array $node ) {
+	$texts = array();
+
+	foreach ( $node as $key => $value ) {
+		if ( 'settings' === $key && is_array( $value ) ) {
+			foreach ( array( 'title', 'editor', 'text' ) as $text_key ) {
+				if ( isset( $value[ $text_key ] ) && is_string( $value[ $text_key ] ) && '' !== trim( $value[ $text_key ] ) ) {
+					$texts[] = trim( wp_strip_all_tags( $value[ $text_key ] ) );
+				}
+			}
+		} elseif ( is_array( $value ) ) {
+			// 'elements' (children) maupun list section numerik — turuni semua.
+			$texts = array_merge( $texts, dci_mcp_bridge_elementor_extract_texts( $value ) );
+		}
+	}
+
+	return $texts;
+}
+
+/**
+ * Rekursif find/replace pada kunci teks whitelisted di _elementor_data.
+ *
+ * @param array  $node    Node (by reference).
+ * @param string $find    Teks dicari.
+ * @param string $replace Teks pengganti.
+ * @return int Jumlah penggantian.
+ */
+function dci_mcp_bridge_elementor_replace_texts( array &$node, $find, $replace ) {
+	$count = 0;
+
+	foreach ( $node as $key => $value ) {
+		if ( is_array( $value ) ) {
+			$count += dci_mcp_bridge_elementor_replace_texts( $node[ $key ], $find, $replace );
+		} elseif ( is_string( $value ) && in_array( $key, array( 'title', 'editor', 'text' ), true ) ) {
+			$node[ $key ] = str_replace( $find, $replace, $value, $n );
+			$count += $n;
+		}
+	}
+
+	return $count;
 }
 
 /* ============================================================
@@ -2689,10 +2889,11 @@ function dci_mcp_bridge_execute_check_originality( $input = array() ) {
 	$post_id = absint( $input['post_id'] ?? 0 );
 	$post    = $post_id > 0 ? get_post( $post_id ) : null;
 
-	if ( ! $post || 'post' !== $post->post_type ) {
+	// v2.2.0: post maupun page.
+	if ( ! $post || ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
 		return new WP_Error(
 			'dci_post_not_found',
-			__( 'Post dengan ID tersebut tidak ditemukan (atau bukan post type "post").', 'dci-mcp-bridge' )
+			__( 'Konten dengan ID tersebut tidak ditemukan (hanya post dan page yang didukung).', 'dci-mcp-bridge' )
 		);
 	}
 
@@ -3332,7 +3533,8 @@ function dci_mcp_bridge_ability_table() {
 		array( 'name' => 'dci/bulk-audit', 'label' => __( 'Bulk Audit Articles', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/list-media', 'label' => __( 'List Media (Images)', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/set-media-alt', 'label' => __( 'Set Media Alt Text', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — meta media', 'dci-mcp-bridge' ) ),
-		array( 'name' => 'dci/set-featured-image', 'label' => __( 'Set Featured Image', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — draf (ops. terbit)', 'dci-mcp-bridge' ) ),
+		 array( 'name' => 'dci/set-featured-image', 'label' => __( 'Set Featured Image', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — draf (ops. terbit)', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/update-elementor-text', 'label' => __( 'Update Elementor Text', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — sumber _elementor_data', 'dci-mcp-bridge' ) ),
 	);
 }
 

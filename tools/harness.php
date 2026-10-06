@@ -140,6 +140,7 @@ namespace {
 	function wp_get_attachment_url( $id ) { return 'https://example.test/wp-content/uploads/img' . $id . '.jpg'; }
 	function get_locale() { return 'id_ID'; }
 	function wp_next_scheduled( $hook ) { return 1700000000; }
+	function wp_slash( $v ) { return $v; }
 	$GLOBALS['dci_transients'] = array();
 	$GLOBALS['dci_get_log']    = array();
 	function wp_remote_get( $url, $args = array() ) {
@@ -220,6 +221,40 @@ namespace {
 	$GLOBALS['dci_posts_list'][] = (object) array( 'ID' => 211, 'post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Terbit Uji', 'post_date' => '2026-04-02', 'post_excerpt' => '', 'post_content' => '<p>isi</p>' );
 	$fi2 = dci_mcp_bridge_execute_set_featured_image( array( 'post_id' => 211, 'attachment_id' => 301 ) );
 	check( 'T19h artikel terbit tanpa flag → ditolak', is_wp_error( $fi2 ) );
+
+	/* T20 — halaman + Elementor (v2.2.0) */
+	$GLOBALS['dci_posts_list'] = array(
+		(object) array( 'ID' => 401, 'post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Halaman Draf', 'post_date' => '2026-05-01', 'post_excerpt' => '', 'post_content' => '<p>halaman draf</p>' ),
+		(object) array( 'ID' => 402, 'post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Halaman Terbit', 'post_date' => '2026-05-02', 'post_excerpt' => '', 'post_content' => '<p>halaman terbit</p>' ),
+		(object) array( 'ID' => 403, 'post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Landing Elementor', 'post_date' => '2026-05-03', 'post_excerpt' => '', 'post_content' => '<div>render</div>' ),
+	);
+	$GLOBALS['dci_meta'] = array(
+		403 => array(
+			'_elementor_edit_mode' => 'builder',
+			'_elementor_data' => json_encode( array( array( 'id' => 'a1', 'elType' => 'section', 'elements' => array(
+				array( 'id' => 'w1', 'elType' => 'widget', 'widgetType' => 'heading', 'settings' => array( 'title' => 'Judul Lama Kontainer' ) ),
+				array( 'id' => 'w2', 'elType' => 'widget', 'widgetType' => 'text-editor', 'settings' => array( 'editor' => '<p>Deskripsi Lama di sini</p>' ) ),
+			) ) ) ),
+		),
+	);
+
+	$up_page = dci_mcp_bridge_execute_update_draft_post( array( 'post_id' => 401, 'title' => 'Halaman Draf Baru' ) );
+	check( 'T20a draf PAGE kini bisa diedit', ! is_wp_error( $up_page ) && array( 'title' ) === $up_page['updated'] );
+	$pub_page = dci_mcp_bridge_execute_update_published_post( array( 'post_id' => 402, 'excerpt' => 'Ringkasan halaman' ) );
+	check( 'T20b halaman terbit bisa diperbaiki', ! is_wp_error( $pub_page ) && array( 'excerpt' ) === $pub_page['updated'] );
+
+	$GLOBALS['dci_post'] = $GLOBALS['dci_posts_list'][2];
+	$gc_el = dci_mcp_bridge_execute_get_content( array( 'post_id' => 403 ) );
+	check( 'T20c get-content deteksi Elementor + teks widget terbaca', true === $gc_el['elementor']['is_builder'] && 2 === count( $gc_el['elementor']['texts'] ) && false !== strpos( implode( ' ', $gc_el['elementor']['texts'] ), 'Judul Lama' ) );
+
+	$el_no = dci_mcp_bridge_execute_update_elementor_text( array( 'post_id' => 403, 'find' => 'Lama', 'replace' => 'Baru', 'allow_published' => true ) );
+	$stored = json_decode( $GLOBALS['dci_meta'][403]['_elementor_data'], true );
+	check( 'T20d update-elementor-text mengganti di sumber', ! is_wp_error( $el_no ) && 2 === $el_no['replacements'] && false !== strpos( $stored[0]['elements'][0]['settings']['title'], 'Baru' ) );
+
+	$el_miss = dci_mcp_bridge_execute_update_elementor_text( array( 'post_id' => 403, 'find' => 'TIDAKADA', 'replace' => 'x', 'allow_published' => true ) );
+	check( 'T20e teks tak ditemukan → error jelas', is_wp_error( $el_miss ) && 'dci_text_not_found' === $el_miss->get_error_code() );
+	$el_plain = dci_mcp_bridge_execute_update_elementor_text( array( 'post_id' => 402, 'find' => 'a', 'replace' => 'b', 'allow_published' => true ) );
+	check( 'T20f non-Elementor → diarahkan ke jalur post_content', is_wp_error( $el_plain ) && 'dci_not_elementor' === $el_plain->get_error_code() );
 
 	/* T17 — konsistensi UI ↔ registry (anti lupa baris tabel admin) */
 	$table_rows = dci_mcp_bridge_ability_table();

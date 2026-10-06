@@ -6,6 +6,28 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [2.2.0] — 2026-10-08
+
+### Ditambahkan
+- **Dukungan halaman (page) menyeluruh** (laporan kebutuhan Mas Wondho: "artikel biasanya
+  sudah ada, bahkan halaman — bukan hanya draft"): guard `post|page` di seluruh jalur
+  edit/baca (update-draft, update-published, get-content, audit, check-originality,
+  set-meta, set-featured, publish); kapabilitas mengikuti tipe konten
+  (publish_pages / edit_published_pages untuk page).
+- **`dci/update-elementor-text`** (ability ke-17): find/replace persis pada teks widget
+  di `_elementor_data` (sumber kebenaran Elementor — post_content halaman builder hanya
+  render dan akan tertimpa). Whitelist kunci teks dari source: `title` (heading),
+  `editor` (text-editor), `text`. Draf default; terbit via allow_published. Cache CSS
+  Elementor dibersihkan (Files_Manager::clear_cache) bila kelas tersedia.
+- `dci/get-content` sadar Elementor: blok `elementor` {is_builder, texts[]} — teks
+  widget terekstrak (maks 120) tanpa membongkar JSON.
+- `dci/bulk-audit`: opsi `include_pages`.
+
+### Pengujian
+- Harness T20 +6 uji (draf page, page terbit, deteksi+ekstraksi Elementor, replace di
+  sumber, teks-tak-ditemukan, non-Elementor diarahkan) — **74/74 PASS**; lint menangkap
+  akhiran ability-16 tertelan anchor (kelas F) + walker list-atas Elementor diperbaiki.
+
 ## [2.1.0] — 2026-10-08
 
 ### Ditambahkan

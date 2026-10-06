@@ -4,7 +4,7 @@ Tags: mcp, ai-agent, seo, rank-math, konten, otomasi
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,14 @@ Pastikan WordPress 6.9+ (Abilities API ada di inti sejak 6.9), plugin MCP Adapte
 1. Halaman DCI Bridge — status integrasi, konfigurasi keamanan, tabel kemampuan, dan panduan koneksi AI agent.
 
 == Changelog ==
+
+= 2.2.0 =
+* Baru: **dukungan halaman (page) menyeluruh** — update-draft-post, update-published-post, get-content, audit-article, check-originality, set-post-seo-meta, set-featured-image, dan publish-post kini menerima post MAUPUN page, dengan kapabilitas WordPress yang mengikuti tipe (*_posts vs *_pages).
+* Baru: kemampuan `dci/update-elementor-text` — sunting teks halaman Elementor **di sumber sebenarnya** (`_elementor_data`) lewat find/replace persis; mengedit post_content halaman Elementor akan tertimpa builder, jadi jalur inilah yang benar. Cache CSS Elementor dibersihkan otomatis setelah simpan.
+* Peningkatan: `dci/get-content` kini sadar Elementor — mendeteksi halaman builder dan mengembalikan `elementor.texts` (teks semua widget heading/text-editor) agar AI bisa membaca tanpa membongkar JSON.
+* Peningkatan: `dci/bulk-audit` mendapat opsi `include_pages`.
+* Kontrak Elementor terverifikasi dari source: meta `_elementor_data`/`_elementor_edit_mode`, kunci teks widget `title` (heading) & `editor` (text-editor), dan `Files_Manager::clear_cache()`.
+* Total 17 kemampuan. Harness +6 uji (74/74 PASS).
 
 = 2.1.0 =
 * Baru (Tier 1 "Mata Agensi", semua read-only kecuali dua perbaikan media): `dci/site-report` — snapshot operasional satu panggilan (versi WP/PHP, tema, struktur permalink, kesehatan cron, inventaris plugin + daftar pembaruan menunggu dari pengecekan terjadwal WP, hitungan konten/media).
