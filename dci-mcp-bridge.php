@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DCI MCP Bridge
  * Description:       Hardening gerbang MCP Adapter + mengekspos kemampuan konten (AI Puffer) sebagai Abilities agar dapat dipakai AI agent. Bagian dari standar operasional Duta Corpora Indonesia.
- * Version:           2.0.0
+ * Version:           2.1.0
  * Author:            Mas Wondho - Duta Corpora Indonesia
  * Requires at least: 6.9
  * Requires PHP:      7.4
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DCI_MCP_BRIDGE_VERSION', '2.0.0' );
+define( 'DCI_MCP_BRIDGE_VERSION', '2.1.0' );
 
 /* ============================================================
  * BAGIAN 1 — HARDENING GERBANG MCP (TRANSPORT HTTP)
@@ -710,6 +710,168 @@ function dci_mcp_bridge_register_abilities() {
 					'destructive' => true,   // Mengubah konten yang sedang live.
 					'idempotent'  => true,
 				),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
+
+	/* --------------------------------------------------------
+	 * Ability 12: dci/site-report — laporan operasional situs.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/site-report',
+		array(
+			'label'       => __( 'Site Report (Ops Agensi)', 'dci-mcp-bridge' ),
+			'description' => __( 'Read-only operational snapshot of THIS site in one call: WordPress & PHP version, active theme, permalink structure, cron health, plugin inventory (total/active/how many have pending updates, with the pending list), and content counts (posts/pages/media). Plugin-update data reflects WordPress\'s own last scheduled check (transient update_plugins) — no live API ping. Use it for agency-style monitoring across client sites.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array( 'type' => 'object', 'properties' => array() ),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array(
+					'site'    => array( 'type' => 'object' ),
+					'theme'   => array( 'type' => 'object' ),
+					'cron'    => array( 'type' => 'object' ),
+					'plugins' => array( 'type' => 'object' ),
+					'counts'  => array( 'type' => 'object' ),
+				),
+				'required'   => array( 'site', 'plugins' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_site_report',
+			'permission_callback' => 'dci_mcp_bridge_permission_read',
+			'meta'                => array(
+				'annotations' => array( 'readonly' => true, 'destructive' => false, 'idempotent' => true ),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
+
+	/* --------------------------------------------------------
+	 * Ability 13: dci/bulk-audit — audit banyak artikel sekaligus.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/bulk-audit',
+		array(
+			'label'       => __( 'Bulk Audit Articles', 'dci-mcp-bridge' ),
+			'description' => __( 'Run the dci/audit-article checks on MANY posts in ONE call (default: 10 newest published; set status/count for other slices, e.g. drafts). Returns per-post summary (pass/warn/fail + failed check labels) and a ranked list starting with the worst posts. Cheaper and faster than auditing post-by-post via MCP.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'count'  => array( 'type' => 'integer', 'default' => 10, 'description' => __( 'Optional. How many posts (1-50).' ) ),
+					'status' => array( 'type' => 'string', 'default' => 'publish', 'enum' => array( 'publish', 'draft' ), 'description' => __( 'Optional. post_status slice.' ) ),
+				),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array(
+					'total'   => array( 'type' => 'integer' ),
+					'summary' => array( 'type' => 'object' ),
+					'items'   => array( 'type' => 'array', 'items' => array( 'type' => 'object' ) ),
+				),
+				'required'   => array( 'total', 'items' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_bulk_audit',
+			'permission_callback' => 'dci_mcp_bridge_permission_read',
+			'meta'                => array(
+				'annotations' => array( 'readonly' => true, 'destructive' => false, 'idempotent' => true ),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
+
+	/* --------------------------------------------------------
+	 * Ability 14: dci/list-media — inventaris media (gambar) + alt.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/list-media',
+		array(
+			'label'       => __( 'List Media (Images)', 'dci-mcp-bridge' ),
+			'description' => __( 'List this site\'s media library (default: images only, newest first) with id, title, URL, ALT TEXT, attached post id, and date — paginated. Use it to find images with empty alt text (SEO gap) before fixing them with dci/set-media-alt.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'per_page' => array( 'type' => 'integer', 'default' => 20, 'description' => __( 'Optional. 1-50.' ) ),
+					'page'     => array( 'type' => 'integer', 'default' => 1 ),
+				),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array( 'items' => array( 'type' => 'array', 'items' => array( 'type' => 'object' ) ), 'page' => array( 'type' => 'integer' ) ),
+				'required'   => array( 'items' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_list_media',
+			'permission_callback' => 'dci_mcp_bridge_permission_read',
+			'meta'                => array(
+				'annotations' => array( 'readonly' => true, 'destructive' => false, 'idempotent' => true ),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
+
+	/* --------------------------------------------------------
+	 * Ability 15: dci/set-media-alt — perbaiki alt text gambar.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/set-media-alt',
+		array(
+			'label'       => __( 'Set Media Alt Text', 'dci-mcp-bridge' ),
+			'description' => __( 'Set the ALT TEXT of a media library image (attachment_id) to a descriptive value. Pairs with dci/list-media to close the empty-alt SEO gap. Plain text, no HTML.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'attachment_id' => array( 'type' => 'integer' ),
+					'alt'           => array( 'type' => 'string', 'description' => __( 'Descriptive alt text (plain text).' ) ),
+				),
+				'required'   => array( 'attachment_id', 'alt' ),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array( 'attachment_id' => array( 'type' => 'integer' ), 'alt' => array( 'type' => 'string' ) ),
+				'required'   => array( 'attachment_id', 'alt' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_set_media_alt',
+			'permission_callback' => 'dci_mcp_bridge_permission_edit_posts',
+			'meta'                => array(
+				'annotations' => array( 'readonly' => false, 'destructive' => false, 'idempotent' => true ),
+				'public'      => true,
+				'mcp'         => array( 'public' => true ),
+			),
+		)
+	);
+
+	/* --------------------------------------------------------
+	 * Ability 16: dci/set-featured-image — gambar utama artikel.
+	 * -------------------------------------------------------- */
+	wp_register_ability(
+		'dci/set-featured-image',
+		array(
+			'label'       => __( 'Set Featured Image', 'dci-mcp-bridge' ),
+			'description' => __( 'Attach an existing media library IMAGE as the featured image of a post. Works on DRAFTS by default; pass allow_published=true to target a published post. Find image ids via dci/list-media. Does NOT upload new files.', 'dci-mcp-bridge' ),
+			'category'    => 'dci-content',
+			'input_schema'    => array(
+				'type'       => 'object',
+				'properties' => array(
+					'post_id'        => array( 'type' => 'integer' ),
+					'attachment_id'  => array( 'type' => 'integer' ),
+					'allow_published' => array( 'type' => 'boolean', 'default' => false ),
+				),
+				'required'   => array( 'post_id', 'attachment_id' ),
+			),
+			'output_schema'   => array(
+				'type'       => 'object',
+				'properties' => array( 'post_id' => array( 'type' => 'integer' ), 'attachment_id' => array( 'type' => 'integer' ), 'image_url' => array( 'type' => 'string' ) ),
+				'required'   => array( 'post_id', 'attachment_id' ),
+			),
+			'execute_callback'    => 'dci_mcp_bridge_execute_set_featured_image',
+			'permission_callback' => 'dci_mcp_bridge_permission_edit_posts',
+			'meta'                => array(
+				'annotations' => array( 'readonly' => false, 'destructive' => false, 'idempotent' => true ),
 				'public'      => true,
 				'mcp'         => array( 'public' => true ),
 			),
@@ -1759,6 +1921,262 @@ function dci_mcp_bridge_execute_audit_article( $input = array() ) {
 			'keyword'     => $rm_keyword,
 			'score'       => ( '' !== (string) $rm_score_raw ) ? (int) $rm_score_raw : null,
 		),
+	);
+}
+
+/* ============================================================
+ * BAGIAN 4E — OPERASIONAL SITUS & MEDIA (TIER 1, v2.1.0)
+ *
+ * Kontrak core yang dipakai (verifikasi playbook kelas A):
+ * - Pembaruan plugin: transient 'update_plugins' (wp-includes/update.php)
+ *   → ->response[file]->new_version; data = hasil pengecekan terjadwal WP.
+ * - Tema: wp_get_theme()->get('Name'/'Version') (wp-includes/theme.php).
+ * - Cron: wp_next_scheduled('wp_version_check') + konstanta DISABLE_WP_CRON
+ *   (wp-includes/cron.php) — sinyal kesehatan penjadwal.
+ * - Media: attachment = post type 'attachment' status 'inherit';
+ *   alt text = postmeta '_wp_attachment_image_alt';
+ *   featured image = postmeta '_thumbnail_id' (wp-includes/post.php).
+ * ============================================================ */
+
+/**
+ * Eksekusi ability dci/site-report: snapshot operasional situs.
+ *
+ * @return array
+ */
+function dci_mcp_bridge_execute_site_report() {
+	if ( ! function_exists( 'get_plugins' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+	}
+
+	$all = function_exists( 'get_plugins' ) ? get_plugins() : array();
+	$active = array();
+	$total  = 0;
+
+	foreach ( (array) $all as $file => $data ) {
+		$total++;
+		if ( function_exists( 'is_plugin_active' ) && is_plugin_active( $file ) ) {
+			$active[] = (string) $file;
+		}
+	}
+
+	$pending = array();
+	$updates = get_site_transient( 'update_plugins' );
+
+	if ( is_object( $updates ) && ! empty( $updates->response ) ) {
+		foreach ( (array) $updates->response as $file => $u ) {
+			if ( is_object( $u ) && ! empty( $u->new_version ) && count( $pending ) < 30 ) {
+				$pending[] = array(
+					'plugin'      => (string) $file,
+					'new_version' => (string) $u->new_version,
+				);
+			}
+		}
+	}
+
+	$theme_name = '';
+	$theme_ver  = '';
+	if ( function_exists( 'wp_get_theme' ) ) {
+		$theme      = wp_get_theme();
+		$theme_name = (string) $theme->get( 'Name' );
+		$theme_ver  = (string) $theme->get( 'Version' );
+	}
+
+	$counts = array();
+	foreach ( array( 'post' => 'post', 'page' => 'page', 'attachment' => 'attachment' ) as $type => $key ) {
+		if ( function_exists( 'wp_count_posts' ) ) {
+			$obj  = wp_count_posts( $type );
+			$cnt  = ( $obj && isset( $obj->publish ) ) ? (int) $obj->publish : 0;
+			if ( 'attachment' === $type ) { $cnt = ( $obj && isset( $obj->inherit ) ) ? (int) $obj->inherit : $cnt; }
+			$counts[ $key ] = $cnt;
+		}
+	}
+
+	return array(
+		'site'    => array(
+			'name'    => wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES ),
+			'url'     => home_url(),
+			'version' => get_bloginfo( 'version' ),
+			'php'     => PHP_VERSION,
+			'locale'  => function_exists( 'get_locale' ) ? get_locale() : '',
+			'permalink_structure' => (string) get_option( 'permalink_structure', '' ),
+			'plugin_version'      => DCI_MCP_BRIDGE_VERSION,
+		),
+		'theme'   => array( 'name' => $theme_name, 'version' => $theme_ver ),
+		'cron'    => array(
+			'disabled'              => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
+			'version_check_scheduled' => function_exists( 'wp_next_scheduled' ) ? (bool) wp_next_scheduled( 'wp_version_check' ) : null,
+		),
+		'plugins' => array(
+			'total'    => $total,
+			'active'   => count( $active ),
+			'pending_updates' => count( $pending ),
+			'updates'  => $pending,
+		),
+		'counts'  => $counts,
+	);
+}
+
+/**
+ * Eksekusi ability dci/bulk-audit: audit banyak artikel sekaligus.
+ *
+ * @param array $input Argumen ability.
+ * @return array|WP_Error
+ */
+function dci_mcp_bridge_execute_bulk_audit( $input = array() ) {
+	$input  = is_array( $input ) ? $input : array();
+	$count  = min( 50, max( 1, absint( $input['count'] ?? 10 ) ) );
+	$status = ( isset( $input['status'] ) && 'draft' === $input['status'] ) ? 'draft' : 'publish';
+
+	$posts = get_posts( array(
+		'post_type'      => 'post',
+		'post_status'    => $status,
+		'posts_per_page' => $count,
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+	) );
+
+	if ( ! is_array( $posts ) ) {
+		$posts = array();
+	}
+
+	$items  = array();
+	$t_pass = 0; $t_warn = 0; $t_fail = 0;
+
+	foreach ( $posts as $post_item ) {
+		$GLOBALS['dci_bulk_current'] = $post_item;
+		$audit = dci_mcp_bridge_execute_audit_article( array( 'post_id' => (int) $post_item->ID ) );
+		unset( $GLOBALS['dci_bulk_current'] );
+
+		if ( is_wp_error( $audit ) ) {
+			continue;
+		}
+
+		$fails = array();
+		$labels = array();
+		foreach ( $audit['checks'] as $chk ) {
+			if ( 'FAIL' === $chk['status'] ) { $labels[] = $chk['label']; }
+			if ( 'PASS' === $chk['status'] ) { $t_pass++; }
+			elseif ( 'WARN' === $chk['status'] ) { $t_warn++; }
+			else { $t_fail++; }
+		}
+
+		$items[] = array(
+			'post_id' => (int) $post_item->ID,
+			'title'   => (string) $post_item->post_title,
+			'url'     => (string) get_permalink( $post_item->ID ),
+			'status'  => $status,
+			'pass'    => (int) $audit['summary']['pass'],
+			'warn'    => (int) $audit['summary']['warn'],
+			'fail'    => (int) $audit['summary']['fail'],
+			'failed_checks' => array_slice( $labels, 0, 3 ),
+		);
+	}
+
+	// Urutkan: paling banyak FAIL dulu (target perbaikan utama).
+	usort( $items, function ( $a, $b ) { return $b['fail'] <=> $a['fail']; } );
+
+	return array(
+		'total'   => count( $items ),
+		'summary' => array( 'pass' => $t_pass, 'warn' => $t_warn, 'fail' => $t_fail ),
+		'items'   => $items,
+	);
+}
+
+/**
+ * Eksekusi ability dci/list-media: inventaris media gambar + alt.
+ *
+ * @param array $input Argumen ability.
+ * @return array
+ */
+function dci_mcp_bridge_execute_list_media( $input = array() ) {
+	$input    = is_array( $input ) ? $input : array();
+	$per_page = min( 50, max( 1, absint( $input['per_page'] ?? 20 ) ) );
+	$paged    = max( 1, absint( $input['page'] ?? 1 ) );
+
+	$media = get_posts( array(
+		'post_type'      => 'attachment',
+		'post_status'    => 'inherit',
+		'post_mime_type' => 'image',
+		'posts_per_page' => $per_page,
+		'paged'          => $paged,
+		'orderby'        => 'date',
+		'order'          => 'DESC',
+	) );
+
+	if ( ! is_array( $media ) ) {
+		$media = array();
+	}
+
+	$items = array();
+	foreach ( $media as $m ) {
+		$items[] = array(
+			'id'        => (int) $m->ID,
+			'title'     => (string) $m->post_title,
+			'url'       => function_exists( 'wp_get_attachment_url' ) ? (string) wp_get_attachment_url( $m->ID ) : '',
+			'alt'       => (string) get_post_meta( $m->ID, '_wp_attachment_image_alt', true ),
+			'parent_id' => (int) $m->post_parent,
+			'date'      => (string) $m->post_date,
+		);
+	}
+
+	return array( 'page' => $paged, 'items' => $items );
+}
+
+/**
+ * Eksekusi ability dci/set-media-alt: perbaiki alt text gambar.
+ *
+ * @param array $input Argumen ability.
+ * @return array|WP_Error
+ */
+function dci_mcp_bridge_execute_set_media_alt( $input = array() ) {
+	$input = is_array( $input ) ? $input : array();
+	$att   = absint( $input['attachment_id'] ?? 0 );
+	$alt   = isset( $input['alt'] ) ? sanitize_text_field( (string) $input['alt'] ) : '';
+
+	if ( $att <= 0 || '' === $alt ) {
+		return new WP_Error( 'dci_invalid_args', __( 'attachment_id dan alt wajib diisi (alt tidak boleh kosong).' ) );
+	}
+
+	$attachment = get_post( $att );
+	if ( ! $attachment || 'attachment' !== $attachment->post_type ) {
+		return new WP_Error( 'dci_not_attachment', __( 'ID tersebut bukan media library (attachment).' ) );
+	}
+
+	update_post_meta( $att, '_wp_attachment_image_alt', $alt );
+
+	return array( 'attachment_id' => $att, 'alt' => $alt );
+}
+
+/**
+ * Eksekusi ability dci/set-featured-image: gambar utama artikel.
+ *
+ * @param array $input Argumen ability.
+ * @return array|WP_Error
+ */
+function dci_mcp_bridge_execute_set_featured_image( $input = array() ) {
+	$input = is_array( $input ) ? $input : array();
+
+	$post = ! empty( $input['allow_published'] )
+		? ( absint( $input['post_id'] ?? 0 ) > 0 ? get_post( absint( $input['post_id'] ) ) : null )
+		: dci_mcp_bridge_get_editable_draft( $input['post_id'] ?? 0 );
+
+	if ( is_wp_error( $post ) || ! $post ) {
+		return is_wp_error( $post ) ? $post : new WP_Error( 'dci_post_not_found', __( 'Post tidak ditemukan.' ) );
+	}
+
+	$att = absint( $input['attachment_id'] ?? 0 );
+	$attachment = $att > 0 ? get_post( $att ) : null;
+
+	if ( ! $attachment || 'attachment' !== $attachment->post_type || 0 !== strpos( (string) $attachment->post_mime_type, 'image/' ) ) {
+		return new WP_Error( 'dci_not_image', __( 'attachment_id harus media bertipe gambar.' ) );
+	}
+
+	update_post_meta( $post->ID, '_thumbnail_id', $att );
+
+	return array(
+		'post_id'       => (int) $post->ID,
+		'attachment_id' => $att,
+		'image_url'     => function_exists( 'wp_get_attachment_url' ) ? (string) wp_get_attachment_url( $att ) : '',
 	);
 }
 
@@ -2910,6 +3328,11 @@ function dci_mcp_bridge_ability_table() {
 		array( 'name' => 'dci/check-originality', 'label' => __( 'Check Originality (AI + Plagiarism)', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca — berbiaya kredit', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/search-content', 'label' => __( 'Search Site Content', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
 		array( 'name' => 'dci/get-content', 'label' => __( 'Get Site Content', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/site-report', 'label' => __( 'Site Report (Ops Agensi)', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/bulk-audit', 'label' => __( 'Bulk Audit Articles', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/list-media', 'label' => __( 'List Media (Images)', 'dci-mcp-bridge' ), 'sifat' => __( 'Baca', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/set-media-alt', 'label' => __( 'Set Media Alt Text', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — meta media', 'dci-mcp-bridge' ) ),
+		array( 'name' => 'dci/set-featured-image', 'label' => __( 'Set Featured Image', 'dci-mcp-bridge' ), 'sifat' => __( 'Tulis — draf (ops. terbit)', 'dci-mcp-bridge' ) ),
 	);
 }
 

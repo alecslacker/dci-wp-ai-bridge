@@ -80,7 +80,10 @@ namespace {
 	function wp_json_encode( $v ) { return json_encode( $v ); }
 	function get_option( $k, $d = false ) { return array_key_exists( $k, $GLOBALS['dci_store'] ) ? $GLOBALS['dci_store'][ $k ] : $d; }
 	function update_option( $k, $v, $a = null ) { $GLOBALS['dci_store'][ $k ] = $v; return true; }
-	function get_post( $id ) { return $GLOBALS['dci_post']; }
+	function get_post( $id ) {
+		foreach ( (array) $GLOBALS['dci_posts_list'] as $p ) { if ( (int) $p->ID === (int) $id ) { return $p; } }
+		return $GLOBALS['dci_post'];
+	}
 	function get_permalink( $id ) { return 'https://example.test/p' . $id; }
 	function get_edit_post_link( $id, $ctx ) { return 'https://example.test/wp-admin/post.php?post=' . $id . '&action=edit'; }
 	function get_preview_post_link( $id ) { return 'https://example.test/?p=' . $id . '&preview=1'; }
@@ -89,8 +92,11 @@ namespace {
 	function get_rest_url( $b = null, $p = '' ) { return 'https://example.test/wp-json/' . $p; }
 	function home_url( $p = '' ) { return 'https://example.test/' . $p; }
 	function wp_parse_url( $u, $c = -1 ) { return parse_url( $u, $c ); }
-	function get_post_meta( $id, $k, $s = false ) { return isset( $GLOBALS['dci_meta'][ $k ] ) ? $GLOBALS['dci_meta'][ $k ] : ''; }
-	function update_post_meta( $id, $k, $v ) { $GLOBALS['dci_meta'][ $k ] = $v; return true; }
+	function get_post_meta( $id, $k, $s = false ) {
+		if ( isset( $GLOBALS['dci_meta'][ (int) $id ][ $k ] ) ) { return $GLOBALS['dci_meta'][ (int) $id ][ $k ]; }
+		return isset( $GLOBALS['dci_meta'][ $k ] ) ? $GLOBALS['dci_meta'][ $k ] : '';
+	}
+	function update_post_meta( $id, $k, $v ) { $GLOBALS['dci_meta'][ (int) $id ][ $k ] = $v; return true; }
 	function wp_update_post( $arr, $err = false ) { return $arr['ID']; }
 	function wp_insert_post( $arr, $err = false ) { return 777; }
 	function number_format_i18n( $n ) { return (string) $n; }
@@ -128,6 +134,12 @@ namespace {
 	function get_transient( $k ) { return isset( $GLOBALS['dci_transients'][ $k ] ) ? $GLOBALS['dci_transients'][ $k ] : false; }
 	function set_transient( $k, $v, $exp = 0 ) { $GLOBALS['dci_transients'][ $k ] = $v; return true; }
 	function delete_transient( $k ) { unset( $GLOBALS['dci_transients'][ $k ] ); return true; }
+	function get_site_transient( $k ) { return isset( $GLOBALS['dci_transients'][ 'site_' . $k ] ) ? $GLOBALS['dci_transients'][ 'site_' . $k ] : false; }
+	function wp_get_theme() { return new class { public function get( $h ) { return 'Name' === $h ? 'Tema Uji' : '1.2.3'; } }; }
+	function wp_count_posts( $type = 'post' ) { return (object) array( 'publish' => 7, 'inherit' => 12 ); }
+	function wp_get_attachment_url( $id ) { return 'https://example.test/wp-content/uploads/img' . $id . '.jpg'; }
+	function get_locale() { return 'id_ID'; }
+	function wp_next_scheduled( $hook ) { return 1700000000; }
 	$GLOBALS['dci_transients'] = array();
 	$GLOBALS['dci_get_log']    = array();
 	function wp_remote_get( $url, $args = array() ) {
@@ -172,6 +184,42 @@ namespace {
 	}
 	check( 'T3b nama/callback/meta valid semua', $all_valid );
 	check( 'T3c kategori terdaftar', 'dci-content' === $GLOBALS['dci_category'][0] );
+
+	/* T19 — Tier 1 operasional (v2.1.0) */
+	$GLOBALS['dci_transients']['site_update_plugins'] = (object) array( 'response' => array(
+		'seo-by-rank-math/rank-math.php' => (object) array( 'new_version' => '9.9.9' ),
+	) );
+	$rep = dci_mcp_bridge_execute_site_report();
+	check( 'T19a site-report: versi + tema + cron + hitungan', '1.2.3' === $rep['theme']['version'] && true === $rep['cron']['version_check_scheduled'] && 7 === $rep['counts']['post'] );
+	check( 'T19b site-report: pembaruan plugin dari transient', 1 === $rep['plugins']['pending_updates'] && '9.9.9' === $rep['plugins']['updates'][0]['new_version'] );
+
+	$GLOBALS['dci_posts_list'] = array(
+		(object) array( 'ID' => 201, 'post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Artikel Sehat', 'post_date' => '2026-02-01', 'post_excerpt' => '', 'post_content' => '<p>' . str_repeat( 'kontainer kantor berkualitas tinggi untuk proyek anda ', 40 ) . '</p>' ),
+		(object) array( 'ID' => 202, 'post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Artikel Rusak', 'post_date' => '2026-01-01', 'post_excerpt' => '', 'post_content' => '<h1>H1</h1><img src="x.jpg">' ),
+	);
+	$GLOBALS['dci_meta'] = array(
+		201 => array(), 202 => array(),
+	);
+	$bulk = dci_mcp_bridge_execute_bulk_audit( array( 'count' => 2 ) );
+	check( 'T19c bulk-audit: 2 artikel terproses', 2 === $bulk['total'] );
+	check( 'T19d bulk-audit: urut terburuk-dulu', $bulk['items'][0]['post_id'] === 202 && $bulk['items'][0]['fail'] >= 1 );
+
+	$GLOBALS['dci_posts_list'] = array(
+		(object) array( 'ID' => 301, 'post_type' => 'attachment', 'post_status' => 'inherit', 'post_title' => 'Foto Kontainer', 'post_date' => '2026-03-01', 'post_excerpt' => '', 'post_content' => '', 'post_parent' => 0, 'post_mime_type' => 'image/jpeg' ),
+	);
+	$GLOBALS['dci_meta'] = array( 301 => array() );
+	$lm = dci_mcp_bridge_execute_list_media( array() );
+	check( 'T19e list-media: item + alt kosong terbaca', 1 === count( $lm['items'] ) && '' === $lm['items'][0]['alt'] && false !== strpos( $lm['items'][0]['url'], 'img301' ) );
+
+	$alt = dci_mcp_bridge_execute_set_media_alt( array( 'attachment_id' => 301, 'alt' => 'Kontainer kantor modifikasi dua lantai' ) );
+	check( 'T19f set-media-alt tersimpan', ! is_wp_error( $alt ) && 'Kontainer kantor modifikasi dua lantai' === $GLOBALS['dci_meta'][301]['_wp_attachment_image_alt'] );
+
+	$GLOBALS['dci_posts_list'][] = (object) array( 'ID' => 210, 'post_type' => 'post', 'post_status' => 'draft', 'post_title' => 'Draf Uji', 'post_date' => '2026-04-01', 'post_excerpt' => '', 'post_content' => '<p>isi</p>' );
+	$fi = dci_mcp_bridge_execute_set_featured_image( array( 'post_id' => 210, 'attachment_id' => 301 ) );
+	check( 'T19g set-featured-image draf sukses', ! is_wp_error( $fi ) && 301 === (int) $GLOBALS['dci_meta'][210]['_thumbnail_id'] );
+	$GLOBALS['dci_posts_list'][] = (object) array( 'ID' => 211, 'post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Terbit Uji', 'post_date' => '2026-04-02', 'post_excerpt' => '', 'post_content' => '<p>isi</p>' );
+	$fi2 = dci_mcp_bridge_execute_set_featured_image( array( 'post_id' => 211, 'attachment_id' => 301 ) );
+	check( 'T19h artikel terbit tanpa flag → ditolak', is_wp_error( $fi2 ) );
 
 	/* T17 — konsistensi UI ↔ registry (anti lupa baris tabel admin) */
 	$table_rows = dci_mcp_bridge_ability_table();

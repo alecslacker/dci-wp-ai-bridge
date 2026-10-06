@@ -6,6 +6,27 @@ versi mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 Dikembangkan oleh **Mas Wondho — Duta Corpora Indonesia**.
 
+## [2.1.0] — 2026-10-08
+
+### Ditambahkan
+- **Tier 1 "Mata Agensi"** — 5 kemampuan operasional (inspirasi WP-CLI, kontrak core
+  berbukti di komentar kode sesuai playbook kelas A):
+  - `dci/site-report`: versi WP/PHP, tema, permalink, kesehatan cron
+    (DISABLE_WP_CRON + wp_next_scheduled wp_version_check), inventaris plugin
+    (total/aktif/menunggu pembaruan via transient `update_plugins` — hasil cek
+    terjadwal WP, tanpa ping API), hitungan post/page/media.
+  - `dci/bulk-audit`: 1-50 artikel sekali panggil, ringkas per-artikel,
+    terurut terbanyak-FAIL-dulu.
+  - `dci/list-media`: gambar + ALT + parent + URL (paginasi) — menemukan alt kosong.
+  - `dci/set-media-alt`: tulis `_wp_attachment_image_alt` (edit_posts).
+  - `dci/set-featured-image`: `_thumbnail_id` (draf default; terbit via
+    allow_published; wajib mime image/*).
+- Total ability: 16.
+
+### Pengujian
+- Harness +8 uji T19; stub get_post kini mencari by ID; meta stub per-post
+  (fallback format lama) — **68/68 PASS**.
+
 ## [2.0.0] — 2026-10-08
 
 ### Ditambahkan
